@@ -84,19 +84,12 @@ public sealed class ManagerSensorSource : ISensorSource
 
     private void BindDefaults()
     {
-        BindIfFound(SensorSlot.CpuLoad, "CPU", "Total", "%");
-        BindIfFound(SensorSlot.CpuTemperature, "CPU", "Package", "°C");
-        BindIfFound(SensorSlot.CpuClock, "CPU", "Core Clock", "MHz");
-        BindIfFound(SensorSlot.CpuPower, "CPU", "Package Power", "W");
-        BindIfFound(SensorSlot.GpuLoad, "GPU", "Utilization", "%");
-        BindIfFound(SensorSlot.GpuTemperature, "GPU", "Temperature", "°C");
-        BindIfFound(SensorSlot.GpuClock, "GPU", "Clock", "MHz");
-        BindIfFound(SensorSlot.GpuPower, "GPU", "Power", "W");
-        BindIfFound(SensorSlot.GpuMemory, "GPU", "Memory Usage", "MB");
-        BindIfFound(SensorSlot.MemoryLoad, "Memory", "Load", "%");
-        BindIfFound(SensorSlot.MemoryUsed, "Memory", "Used");
-        BindIfFound(SensorSlot.CpuFan, "CPU", "Fan");
-        BindIfFound(SensorSlot.GpuFan, "GPU", "Fan");
+        foreach (SensorSlot slot in Enum.GetValues(typeof(SensorSlot)))
+        {
+            SensorItem sensor = FindBestSensor(slot);
+            if (sensor != null)
+                Bind(slot, sensor.Guid);
+        }
     }
 
     private void BindIfFound(SensorSlot slot, params string[] terms)
@@ -107,6 +100,77 @@ public sealed class ManagerSensorSource : ISensorSource
                               (item.Unit ?? string.Empty).IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0));
         if (sensor != null)
             Bind(slot, sensor.Guid);
+    }
+
+    private SensorItem FindBestSensor(SensorSlot slot)
+    {
+        return sensors
+            .Select(sensor => new { Sensor = sensor, Score = ScoreSensor(sensor, slot) })
+            .Where(candidate => candidate.Score > 0)
+            .OrderByDescending(candidate => candidate.Score)
+            .Select(candidate => candidate.Sensor)
+            .FirstOrDefault();
+    }
+
+    private static int ScoreSensor(SensorItem sensor, SensorSlot slot)
+    {
+        string source = sensor.Source ?? string.Empty;
+        string name = sensor.Name ?? string.Empty;
+        string unit = sensor.Unit ?? string.Empty;
+        string text = $"{source} {name}";
+        bool cpu = text.IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 || text.IndexOf("Processor", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool gpu = text.IndexOf("GPU", StringComparison.OrdinalIgnoreCase) >= 0 || text.IndexOf("GeForce", StringComparison.OrdinalIgnoreCase) >= 0 || text.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool memory = text.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) >= 0 || text.IndexOf("RAM", StringComparison.OrdinalIgnoreCase) >= 0;
+        Func<string, bool> has = value => text.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
+        Func<string, bool> unitIs = value => string.Equals(unit, value, StringComparison.OrdinalIgnoreCase);
+
+        int score = 0;
+        if (slot.ToString().StartsWith("Cpu", StringComparison.OrdinalIgnoreCase) && cpu && !gpu) score += 20;
+        if (slot.ToString().StartsWith("Gpu", StringComparison.OrdinalIgnoreCase) && gpu) score += 20;
+        if (slot.ToString().StartsWith("Memory", StringComparison.OrdinalIgnoreCase) && memory && !cpu && !gpu) score += 20;
+
+        switch (slot)
+        {
+            case SensorSlot.CpuLoad:
+            case SensorSlot.GpuLoad:
+            case SensorSlot.MemoryLoad:
+                if (unitIs("%")) score += 30;
+                if (has("Load") || has("Usage") || has("Utilization")) score += 20;
+                if (has("Clock") || has("Temperature")) score -= 40;
+                break;
+            case SensorSlot.CpuTemperature:
+            case SensorSlot.GpuTemperature:
+                if (unit.IndexOf("C", StringComparison.OrdinalIgnoreCase) >= 0) score += 30;
+                if (has("Temperature") || has("Package") || has("Tdie")) score += 20;
+                break;
+            case SensorSlot.CpuClock:
+            case SensorSlot.GpuClock:
+                if (unitIs("MHz")) score += 30;
+                if (has("Clock") || has("Frequency")) score += 20;
+                if (has("Memory")) score -= 15;
+                break;
+            case SensorSlot.CpuPower:
+            case SensorSlot.GpuPower:
+                if (unitIs("W")) score += 30;
+                if (has("Power") || has("Package")) score += 20;
+                break;
+            case SensorSlot.GpuMemory:
+                if (unitIs("MB") || unitIs("GB")) score += 30;
+                if (has("Memory") || has("VRAM")) score += 20;
+                break;
+            case SensorSlot.MemoryUsed:
+                if (unitIs("MB") || unitIs("GB")) score += 30;
+                if (has("Used") || has("Usage")) score += 20;
+                if (has("Clock") || has("Timing")) score -= 50;
+                break;
+            case SensorSlot.CpuFan:
+            case SensorSlot.GpuFan:
+                if (unitIs("RPM")) score += 30;
+                if (has("Fan") || has("Pump")) score += 20;
+                break;
+        }
+
+        return score;
     }
 
     private double ReadMemoryUsedGigabytes()
