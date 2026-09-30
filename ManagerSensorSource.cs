@@ -131,6 +131,14 @@ public sealed class ManagerSensorSource : ISensorSource
         Func<string, bool> unitIs = value => string.Equals(unit, value, StringComparison.OrdinalIgnoreCase);
 
         int score = 0;
+        if (slot == SensorSlot.CpuFan)
+        {
+            if (!gpu && (has("Fan") || has("Pump") || has("CPU OPT"))) score += 35;
+            if (unitIs("RPM")) score += 30;
+            if (has("CPU")) score += 20;
+            return score;
+        }
+
         if (slot.ToString().StartsWith("Cpu", StringComparison.OrdinalIgnoreCase) && cpu && !gpu) score += 20;
         if (slot.ToString().StartsWith("Gpu", StringComparison.OrdinalIgnoreCase) && gpu) score += 20;
         if (slot.ToString().StartsWith("Memory", StringComparison.OrdinalIgnoreCase) && memory && !cpu && !gpu) score += 20;
@@ -169,7 +177,6 @@ public sealed class ManagerSensorSource : ISensorSource
                 if (has("Used") || has("Usage")) score += 20;
                 if (has("Clock") || has("Timing")) score -= 50;
                 break;
-            case SensorSlot.CpuFan:
             case SensorSlot.GpuFan:
                 if (unitIs("RPM")) score += 30;
                 if (has("Fan") || has("Pump")) score += 20;

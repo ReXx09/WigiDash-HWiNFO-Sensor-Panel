@@ -124,8 +124,13 @@ public sealed class HwinfoPanelSettings : UserControl
         bool isMemory = text.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         text.IndexOf("RAM", StringComparison.OrdinalIgnoreCase) >= 0;
 
+        if (slot == SensorSlot.CpuFan)
+            return !isGpu && (text.IndexOf("Fan", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              text.IndexOf("Pump", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                              text.IndexOf("CPU OPT", StringComparison.OrdinalIgnoreCase) >= 0);
+
         if (slot == SensorSlot.CpuLoad || slot == SensorSlot.CpuTemperature || slot == SensorSlot.CpuClock ||
-            slot == SensorSlot.CpuPower || slot == SensorSlot.CpuFan)
+            slot == SensorSlot.CpuPower)
             return isCpu && !isGpu;
 
         if (slot == SensorSlot.GpuLoad || slot == SensorSlot.GpuTemperature || slot == SensorSlot.GpuClock ||
