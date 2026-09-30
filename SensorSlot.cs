@@ -1,5 +1,12 @@
 namespace HwinfoSensorPanel;
 
+public enum PanelTarget
+{
+    Combined,
+    Cpu,
+    Gpu
+}
+
 public enum SensorSlot
 {
     CpuLoad,

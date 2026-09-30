@@ -22,6 +22,15 @@ public sealed class HwinfoPanelSettings : UserControl
         StackPanel panel = new() { Margin = new Thickness(12) };
         panel.Children.Add(new TextBlock { Text = "HWiNFO Sensor Panel", FontSize = 18, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 14) });
 
+        panel.Children.Add(new TextBlock { Text = "Panelbereich", Margin = new Thickness(0, 0, 0, 4) });
+        ComboBox targetSelector = new() { Width = 180 };
+        targetSelector.Items.Add("Kombiniert");
+        targetSelector.Items.Add("CPU");
+        targetSelector.Items.Add("GPU");
+        targetSelector.SelectedIndex = (int)widget.PanelTarget;
+        targetSelector.SelectionChanged += (_, _) => widget.SetPanelTarget((PanelTarget)targetSelector.SelectedIndex);
+        panel.Children.Add(targetSelector);
+
         panel.Children.Add(new TextBlock { Text = "Akzentfarbe", Margin = new Thickness(0, 0, 0, 4) });
         colorSelector = new ComboBox { Width = 180 };
         colorSelector.Items.Add("Rot");
