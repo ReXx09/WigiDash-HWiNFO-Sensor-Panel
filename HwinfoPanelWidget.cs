@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Controls;
 using WigiDashWidgetFramework;
@@ -376,6 +377,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         SizeF labelSize = graphics.MeasureString(label, titleFont);
         graphics.DrawString(label, titleFont, white, bounds.X + (bounds.Width - labelSize.Width) / 2, bounds.Y + 7);
+        model = ShortenFiveByOneModel(label, model);
         using StringFormat centeredModel = new()
         {
             Alignment = StringAlignment.Center,
@@ -385,18 +387,28 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         };
         graphics.DrawString(model, detailFont, muted, new RectangleF(bounds.X + 10, bounds.Y + 27, bounds.Width - 20, 14), centeredModel);
         int gaugeRadius = Math.Min(49, Math.Max(22, (int)Math.Round(bounds.Height / 3.0 * 1.44)));
+        int gaugeWidth = Math.Min(20, Math.Max(10, (int)Math.Round(gaugeRadius * 20.0 / 49)));
         int gaugeCenterY = bounds.Y + bounds.Height / 2 + 2;
         Point loadCenter = new(bounds.X + gaugeRadius + 28, gaugeCenterY);
         Point temperatureCenter = new(bounds.Right - gaugeRadius - 20, gaugeCenterY);
-        DrawGauge(graphics, loadCenter, gaugeRadius, load, accentColor);
+        DrawGauge(graphics, loadCenter, gaugeRadius, load, accentColor, gaugeWidth);
         DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
         DrawCenteredText(graphics, "LOAD", detailFont, muted, loadCenter.X, loadCenter.Y + gaugeRadius - 7);
-        DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, accentColor);
+        DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, accentColor, gaugeWidth);
         DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
         DrawCenteredText(graphics, "TEMP", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + gaugeRadius - 7);
         int metricX = bounds.X + (bounds.Width - 155) / 2;
         DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000);
         DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300);
+    }
+
+    private static string ShortenFiveByOneModel(string label, string model)
+    {
+        if (!string.Equals(label, "GPU", StringComparison.OrdinalIgnoreCase))
+            return model;
+
+        Match match = Regex.Match(model ?? string.Empty, @"NVIDIA\s+GeForce\s+RTX\s*(?<model>\d{3,4})", RegexOptions.IgnoreCase);
+        return match.Success ? $"NVIDIA GeForce RTX {match.Groups["model"].Value}" : model;
     }
 
     private static void DrawCenteredText(Graphics graphics, string text, Font font, Brush brush, float centerX, float y)
@@ -412,14 +424,14 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString(label, new Font("Segoe UI", 8), muted, x, y);
         graphics.DrawString(value, new Font("Segoe UI", 8), white, x + 42, y);
         double clamped = progress < 0 ? 0 : progress > 1 ? 1 : progress;
-        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 14, 155, 2);
-        graphics.FillRectangle(new SolidBrush(accentColor), x, y + 14, (float)(155 * clamped), 2);
+        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 14, 155, 4);
+        graphics.FillRectangle(new SolidBrush(accentColor), x, y + 14, (float)(155 * clamped), 4);
     }
 
-    private static void DrawGauge(Graphics graphics, Point center, int radius, double value, Color accent)
+    private static void DrawGauge(Graphics graphics, Point center, int radius, double value, Color accent, int strokeWidth = 10)
     {
-        using Pen backgroundPen = new(Color.FromArgb(70, 78, 88), 10);
-        using Pen valuePen = new(accent, 10);
+        using Pen backgroundPen = new(Color.FromArgb(70, 78, 88), strokeWidth);
+        using Pen valuePen = new(accent, strokeWidth);
         graphics.DrawArc(backgroundPen, center.X - radius, center.Y - radius, radius * 2, radius * 2, 135, 270);
         double clampedValue = value < 0 ? 0 : value > 100 ? 100 : value;
         graphics.DrawArc(valuePen, center.X - radius, center.Y - radius, radius * 2, radius * 2, 135, (float)(270 * clampedValue / 100));
