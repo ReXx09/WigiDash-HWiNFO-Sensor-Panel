@@ -18,6 +18,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private readonly ISensorSource sensorSource;
     private readonly object bitmapLock = new();
     private readonly object drawLock = new();
+    private readonly AutoResetEvent stopEvent = new(false);
     private readonly Thread drawThread;
     private volatile bool running = true;
     private readonly int bitmapWidth;
@@ -110,21 +111,33 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public void Dispose()
     {
         running = false;
-        if (drawThread.IsAlive) drawThread.Join(500);
+        stopEvent.Set();
+        if (drawThread.IsAlive) drawThread.Join();
         sensorSource.Dispose();
         lock (bitmapLock)
         {
             bitmap.Dispose();
         }
+        stopEvent.Dispose();
     }
 
     private void DrawLoop()
     {
         while (running)
         {
-            Draw(sensorSource.Read());
-            PublishBitmap();
-            Thread.Sleep(updateIntervalMilliseconds);
+            try
+            {
+                Draw(sensorSource.Read());
+                PublishBitmap();
+            }
+            catch (Exception)
+            {
+                if (!running)
+                    break;
+            }
+
+            if (stopEvent.WaitOne(updateIntervalMilliseconds))
+                break;
         }
     }
 
@@ -371,16 +384,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             FormatFlags = StringFormatFlags.NoWrap
         };
         graphics.DrawString(model, detailFont, muted, new RectangleF(bounds.X + 10, bounds.Y + 27, bounds.Width - 20, 14), centeredModel);
-        int gaugeRadius = Math.Min(41, Math.Max(22, (int)Math.Round(bounds.Height / 3.0 * 1.2)));
+        int gaugeRadius = Math.Min(49, Math.Max(22, (int)Math.Round(bounds.Height / 3.0 * 1.44)));
         int gaugeCenterY = bounds.Y + bounds.Height / 2 + 2;
         Point loadCenter = new(bounds.X + gaugeRadius + 28, gaugeCenterY);
         Point temperatureCenter = new(bounds.Right - gaugeRadius - 20, gaugeCenterY);
         DrawGauge(graphics, loadCenter, gaugeRadius, load, accentColor);
-        DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - 9);
-        DrawCenteredText(graphics, "LOAD", detailFont, muted, loadCenter.X, loadCenter.Y + gaugeRadius + 4);
+        DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
+        DrawCenteredText(graphics, "LOAD", detailFont, muted, loadCenter.X, loadCenter.Y + gaugeRadius - 7);
         DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, accentColor);
-        DrawCenteredText(graphics, $"{temperature:0}°", valueFont, white, temperatureCenter.X, temperatureCenter.Y - 9);
-        DrawCenteredText(graphics, "TEMP", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + gaugeRadius + 4);
+        DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
+        DrawCenteredText(graphics, "TEMP", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + gaugeRadius - 7);
         int metricX = bounds.X + (bounds.Width - 155) / 2;
         DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000);
         DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300);

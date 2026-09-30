@@ -8,6 +8,7 @@ namespace HwinfoSensorPanel;
 public sealed class ManagerSensorSource : ISensorSource
 {
     private readonly IWidgetManager manager;
+    private readonly object stateLock = new();
     private readonly Dictionary<SensorSlot, Guid> bindings = new();
     private readonly Dictionary<Guid, double> values = new();
     private readonly List<SensorItem> sensors = new();
@@ -24,53 +25,72 @@ public sealed class ManagerSensorSource : ISensorSource
 
     public Guid? GetBinding(SensorSlot slot)
     {
-        return bindings.TryGetValue(slot, out Guid sensorGuid) ? sensorGuid : (Guid?)null;
+        lock (stateLock)
+            return bindings.TryGetValue(slot, out Guid sensorGuid) ? sensorGuid : (Guid?)null;
     }
 
     public void RefreshSensors()
     {
-        sensors.Clear();
-        sensors.AddRange(manager.GetSensorList());
+        List<SensorItem> refreshed = manager.GetSensorList().ToList();
+        lock (stateLock)
+        {
+            sensors.Clear();
+            sensors.AddRange(refreshed);
+        }
     }
 
     public bool Bind(SensorSlot slot, Guid sensorGuid)
     {
-        SensorItem sensor = sensors.FirstOrDefault(item => item.Guid == sensorGuid);
+        SensorItem sensor;
+        lock (stateLock)
+            sensor = sensors.FirstOrDefault(item => item.Guid == sensorGuid);
         if (sensor == null)
             return false;
 
-        bindings[slot] = sensorGuid;
-        return manager.AddMonitoringItem(sensor);
+        bool added = manager.AddMonitoringItem(sensor);
+        if (added)
+        {
+            lock (stateLock)
+                bindings[slot] = sensorGuid;
+        }
+
+        return added;
     }
 
     public bool IsCompatible(SensorSlot slot, Guid sensorGuid)
     {
-        SensorItem sensor = sensors.FirstOrDefault(item => item.Guid == sensorGuid);
-        return sensor != null && ScoreSensor(sensor, slot) > 0;
+        lock (stateLock)
+        {
+            SensorItem sensor = sensors.FirstOrDefault(item => item.Guid == sensorGuid);
+            return sensor != null && ScoreSensor(sensor, slot) > 0;
+        }
     }
 
     public SensorSnapshot Read()
     {
-        return new SensorSnapshot
+        lock (stateLock)
         {
-            CpuName = HardwareName("CPU", "CPU"),
-            GpuName = HardwareName("GPU", "GPU"),
-            MemoryName = HardwareName("Memory", "RAM"),
-            CpuLoadPercent = ReadValue(SensorSlot.CpuLoad),
-            CpuTemperatureCelsius = ReadValue(SensorSlot.CpuTemperature),
-            CpuClockMhz = ReadValue(SensorSlot.CpuClock),
-            CpuPowerWatts = ReadValue(SensorSlot.CpuPower),
-            GpuLoadPercent = ReadValue(SensorSlot.GpuLoad),
-            GpuTemperatureCelsius = ReadValue(SensorSlot.GpuTemperature),
-            GpuClockMhz = ReadValue(SensorSlot.GpuClock),
-            GpuPowerWatts = ReadValue(SensorSlot.GpuPower),
-            GpuMemoryMegabytes = ReadValue(SensorSlot.GpuMemory),
-            MemoryLoadPercent = ReadValue(SensorSlot.MemoryLoad),
-            MemoryUsedGigabytes = ReadMemoryUsedGigabytes(),
-            CpuFanRpm = (int)ReadValue(SensorSlot.CpuFan),
-            GpuFanRpm = (int)ReadValue(SensorSlot.GpuFan),
-            MemoryTotalGigabytes = 32
-        };
+            return new SensorSnapshot
+            {
+                CpuName = HardwareName("CPU", "CPU"),
+                GpuName = HardwareName("GPU", "GPU"),
+                MemoryName = HardwareName("Memory", "RAM"),
+                CpuLoadPercent = ReadValue(SensorSlot.CpuLoad),
+                CpuTemperatureCelsius = ReadValue(SensorSlot.CpuTemperature),
+                CpuClockMhz = ReadValue(SensorSlot.CpuClock),
+                CpuPowerWatts = ReadValue(SensorSlot.CpuPower),
+                GpuLoadPercent = ReadValue(SensorSlot.GpuLoad),
+                GpuTemperatureCelsius = ReadValue(SensorSlot.GpuTemperature),
+                GpuClockMhz = ReadValue(SensorSlot.GpuClock),
+                GpuPowerWatts = ReadValue(SensorSlot.GpuPower),
+                GpuMemoryMegabytes = ReadValue(SensorSlot.GpuMemory),
+                MemoryLoadPercent = ReadValue(SensorSlot.MemoryLoad),
+                MemoryUsedGigabytes = ReadMemoryUsedGigabytes(),
+                CpuFanRpm = (int)ReadValue(SensorSlot.CpuFan),
+                GpuFanRpm = (int)ReadValue(SensorSlot.GpuFan),
+                MemoryTotalGigabytes = 32
+            };
+        }
     }
 
     public void Dispose()
@@ -80,7 +100,8 @@ public sealed class ManagerSensorSource : ISensorSource
 
     private void Manager_SensorUpdated(SensorItem item, double value)
     {
-        values[item.Guid] = value;
+        lock (stateLock)
+            values[item.Guid] = value;
     }
 
     private double ReadValue(SensorSlot slot)
