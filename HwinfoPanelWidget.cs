@@ -394,7 +394,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawGauge(graphics, loadCenter, gaugeRadius, load, accentColor, gaugeWidth);
         DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
         DrawCenteredText(graphics, "LOAD", detailFont, muted, loadCenter.X, loadCenter.Y + gaugeRadius - 7);
-        int metricX = showTemperatureGauge ? bounds.X + (bounds.Width - 155) / 2 : bounds.Right - 165;
+        int metricWidth = showTemperatureGauge ? 155 : 115;
+        int metricX = showTemperatureGauge ? bounds.X + (bounds.Width - metricWidth) / 2 : bounds.Right - metricWidth - 6;
         if (showTemperatureGauge)
         {
             DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, accentColor, gaugeWidth);
@@ -402,9 +403,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             DrawCenteredText(graphics, "TEMP", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + gaugeRadius - 7);
         }
         else
-            DrawCompactMetric(graphics, metricX, bounds.Y + 25, "TEMP", $"{temperature:0} °C", temperature / 100);
-        DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000);
-        DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300);
+            DrawCompactMetric(graphics, metricX, bounds.Y + 25, "TEMP", $"{temperature:0} °C", temperature / 100, metricWidth);
+        DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000, metricWidth);
+        DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300, metricWidth);
     }
 
     private static string ShortenFiveByOneModel(string label, string model)
@@ -422,15 +423,15 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString(text, font, brush, centerX - size.Width / 2, y);
     }
 
-    private void DrawCompactMetric(Graphics graphics, int x, int y, string label, string value, double progress)
+    private void DrawCompactMetric(Graphics graphics, int x, int y, string label, string value, double progress, int width)
     {
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         graphics.DrawString(label, new Font("Segoe UI", 8), muted, x, y);
         graphics.DrawString(value, new Font("Segoe UI", 8), white, x + 42, y);
         double clamped = progress < 0 ? 0 : progress > 1 ? 1 : progress;
-        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 14, 155, 4);
-        graphics.FillRectangle(new SolidBrush(accentColor), x, y + 14, (float)(155 * clamped), 4);
+        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 14, width, 4);
+        graphics.FillRectangle(new SolidBrush(accentColor), x, y + 14, (float)(width * clamped), 4);
     }
 
     private static void DrawGauge(Graphics graphics, Point center, int radius, double value, Color accent, int strokeWidth = 10)
