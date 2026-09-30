@@ -47,6 +47,9 @@ public sealed class ManagerSensorSource : ISensorSource
     {
         return new SensorSnapshot
         {
+            CpuName = HardwareName("CPU", "CPU"),
+            GpuName = HardwareName("GPU", "GPU"),
+            MemoryName = HardwareName("Memory", "RAM"),
             CpuLoadPercent = ReadValue(SensorSlot.CpuLoad),
             CpuTemperatureCelsius = ReadValue(SensorSlot.CpuTemperature),
             CpuClockMhz = ReadValue(SensorSlot.CpuClock),
@@ -57,6 +60,9 @@ public sealed class ManagerSensorSource : ISensorSource
             GpuPowerWatts = ReadValue(SensorSlot.GpuPower),
             GpuMemoryMegabytes = ReadValue(SensorSlot.GpuMemory),
             MemoryLoadPercent = ReadValue(SensorSlot.MemoryLoad),
+            MemoryUsedGigabytes = ReadMemoryUsedGigabytes(),
+            CpuFanRpm = (int)ReadValue(SensorSlot.CpuFan),
+            GpuFanRpm = (int)ReadValue(SensorSlot.GpuFan),
             MemoryTotalGigabytes = 32
         };
     }
@@ -88,6 +94,9 @@ public sealed class ManagerSensorSource : ISensorSource
         BindIfFound(SensorSlot.GpuPower, "GPU", "Power", "W");
         BindIfFound(SensorSlot.GpuMemory, "GPU", "Memory Usage", "MB");
         BindIfFound(SensorSlot.MemoryLoad, "Memory", "Load", "%");
+        BindIfFound(SensorSlot.MemoryUsed, "Memory", "Used");
+        BindIfFound(SensorSlot.CpuFan, "CPU", "Fan");
+        BindIfFound(SensorSlot.GpuFan, "GPU", "Fan");
     }
 
     private void BindIfFound(SensorSlot slot, params string[] terms)
@@ -98,5 +107,30 @@ public sealed class ManagerSensorSource : ISensorSource
                               (item.Unit ?? string.Empty).IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0));
         if (sensor != null)
             Bind(slot, sensor.Guid);
+    }
+
+    private double ReadMemoryUsedGigabytes()
+    {
+        double value = ReadValue(SensorSlot.MemoryUsed);
+        SensorItem sensor = GetBoundSensor(SensorSlot.MemoryUsed);
+        return sensor != null && string.Equals(sensor.Unit, "GB", StringComparison.OrdinalIgnoreCase) ? value : value / 1024.0;
+    }
+
+    private SensorItem GetBoundSensor(SensorSlot slot)
+    {
+        return bindings.TryGetValue(slot, out Guid sensorGuid)
+            ? sensors.FirstOrDefault(sensor => sensor.Guid == sensorGuid)
+            : null;
+    }
+
+    private string HardwareName(string sourceTerm, string fallback)
+    {
+        SensorItem sensor = sensors.FirstOrDefault(item =>
+            (item.Source ?? string.Empty).IndexOf(sourceTerm, StringComparison.OrdinalIgnoreCase) >= 0);
+        if (sensor == null || string.IsNullOrWhiteSpace(sensor.Source))
+            return fallback;
+
+        int separator = sensor.Source.IndexOf(':');
+        return separator >= 0 ? sensor.Source.Substring(separator + 1).Trim() : sensor.Source.Trim();
     }
 }

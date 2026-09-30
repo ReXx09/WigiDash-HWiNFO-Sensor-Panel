@@ -2,6 +2,9 @@ namespace HwinfoSensorPanel;
 
 public sealed class SensorSnapshot
 {
+    public string CpuName { get; set; } = "CPU";
+    public string GpuName { get; set; } = "GPU";
+    public string MemoryName { get; set; } = "RAM";
     public double CpuLoadPercent { get; set; }
     public double CpuTemperatureCelsius { get; set; }
     public double CpuClockMhz { get; set; }

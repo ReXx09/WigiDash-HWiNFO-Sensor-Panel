@@ -166,8 +166,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                 int top = 72;
                 int largeWidth = (next.Width - margin * 2 - gap) / 2;
                 int largeHeight = 220;
-                DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", "Intel Core i7-12700KF", data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
-                DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", "GeForce RTX", data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
+                DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
+                DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
 
                 int bottomTop = top + largeHeight + gap;
                 int smallWidth = (next.Width - margin * 2 - gap * 2) / 3;
@@ -228,7 +228,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
-        graphics.DrawString("RAM  DDR5-6000", titleFont, white, bounds.X + 14, bounds.Y + 12);
+        graphics.DrawString(data.MemoryName, titleFont, white, bounds.X + 14, bounds.Y + 12);
         graphics.DrawString($"Load                         {data.MemoryLoadPercent:0}%", detailFont, muted, bounds.X + 14, bounds.Y + 50);
         graphics.DrawString($"Used  {data.MemoryUsedGigabytes:0.0} GB / {data.MemoryTotalGigabytes:0} GB", detailFont, muted, bounds.X + 14, bounds.Y + 76);
         graphics.DrawString("38-38-38-77 CR2", detailFont, muted, bounds.X + 14, bounds.Y + 102);

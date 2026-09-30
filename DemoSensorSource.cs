@@ -13,6 +13,9 @@ public sealed class DemoSensorSource : ISensorSource
 
         return new SensorSnapshot
         {
+            CpuName = "Intel Core i7-12700KF",
+            GpuName = "GeForce RTX",
+            MemoryName = "RAM DDR5-6000",
             CpuLoadPercent = 6 + wave * 18,
             CpuTemperatureCelsius = 38 + wave * 6,
             CpuClockMhz = 4700 + wave * 300,

@@ -41,9 +41,17 @@ public sealed class HwinfoPanelSettings : UserControl
         panel.Children.Add(new TextBlock { Text = "HWiNFO-Sensoren", Margin = new Thickness(0, 18, 0, 8), FontWeight = FontWeights.Bold });
         AddSensorSelector(panel, "CPU-Last", SensorSlot.CpuLoad);
         AddSensorSelector(panel, "CPU-Temperatur", SensorSlot.CpuTemperature);
+        AddSensorSelector(panel, "CPU-Clock", SensorSlot.CpuClock);
+        AddSensorSelector(panel, "CPU-Power", SensorSlot.CpuPower);
+        AddSensorSelector(panel, "CPU-Lüfter", SensorSlot.CpuFan);
         AddSensorSelector(panel, "GPU-Last", SensorSlot.GpuLoad);
         AddSensorSelector(panel, "GPU-Temperatur", SensorSlot.GpuTemperature);
+        AddSensorSelector(panel, "GPU-Clock", SensorSlot.GpuClock);
+        AddSensorSelector(panel, "GPU-Power", SensorSlot.GpuPower);
+        AddSensorSelector(panel, "GPU-VRAM", SensorSlot.GpuMemory);
+        AddSensorSelector(panel, "GPU-Lüfter", SensorSlot.GpuFan);
         AddSensorSelector(panel, "RAM-Last", SensorSlot.MemoryLoad);
+        AddSensorSelector(panel, "RAM-Used", SensorSlot.MemoryUsed);
 
         Button updateButton = new() { Content = "Jetzt aktualisieren", Margin = new Thickness(0, 18, 0, 0), Padding = new Thickness(10, 5, 10, 5) };
         updateButton.Click += UpdateButton_Click;

@@ -13,5 +13,6 @@ public enum SensorSlot
     GpuMemory,
     CpuFan,
     GpuFan,
-    MemoryLoad
+    MemoryLoad,
+    MemoryUsed
 }
