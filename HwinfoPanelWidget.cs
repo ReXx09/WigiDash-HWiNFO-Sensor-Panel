@@ -186,7 +186,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
                 bool compact = WidgetSize.Width <= 2 && WidgetSize.Height <= 2;
-                bool singleRow = WidgetSize.Width == 5 && WidgetSize.Height == 1;
+                bool singleRow = WidgetSize.Width >= 3 && WidgetSize.Height == 1;
                 graphics.Clear(Color.FromArgb(12, 14, 18));
 
                 if (singleRow)
