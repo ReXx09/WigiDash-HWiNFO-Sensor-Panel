@@ -245,9 +245,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawGauge(graphics, new Point(bounds.X + 100, bounds.Y + 135), 58, load, accent);
         graphics.DrawString($"{load:0}%", valueFont, white, bounds.X + 72, bounds.Y + 112);
         graphics.DrawString("Load", detailFont, muted, bounds.X + 87, bounds.Y + 148);
-        DrawMetric(graphics, bounds.X + 200, bounds.Y + 82, "Temperature", $"{temperature:0} °C", accentBrush, detailFont, white);
-        DrawMetric(graphics, bounds.X + 200, bounds.Y + 121, "Clock", $"{clock:0} MHz", accentBrush, detailFont, white);
-        DrawMetric(graphics, bounds.X + 200, bounds.Y + 160, "Power", $"{power:0} W", accentBrush, detailFont, white);
+        DrawMetric(graphics, bounds.X + 200, bounds.Y + 82, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white);
+        DrawMetric(graphics, bounds.X + 200, bounds.Y + 121, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white);
+        DrawMetric(graphics, bounds.X + 200, bounds.Y + 160, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white);
     }
 
     private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
@@ -292,12 +292,14 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 86, bounds.Width - 28, 4);
     }
 
-    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, Brush accent, Font detailFont, Brush white)
+    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white)
     {
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         graphics.DrawString(label, detailFont, muted, x, y);
         graphics.DrawString(value, detailFont, white, x + 108, y);
-        graphics.FillRectangle(accent, x, y + 22, 220, 4);
+        double clampedProgress = progress < 0 ? 0 : progress > 1 ? 1 : progress;
+        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 22, 220, 4);
+        graphics.FillRectangle(accent, x, y + 22, (float)(220 * clampedProgress), 4);
     }
 
     private void DrawCompactPanel(Graphics graphics, int width, int height, SensorSnapshot data, Font titleFont, Font valueFont, Font detailFont)
