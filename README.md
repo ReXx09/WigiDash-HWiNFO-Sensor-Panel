@@ -13,6 +13,8 @@ Dieses Projekt ist ein grafisches 5x4-WigiDash-Widget. Die Oberfläche wird voll
 
 ## Demo-Animation
 
+![Animierte Vorschau des 5x1-Widgets](docs/demo-animation.gif)
+
 Wenn das Widget außerhalb des WigiDash Managers erzeugt wird, verwendet es [`DemoSensorSource`](DemoSensorSource.cs). Die Quelle erzeugt eine laufende Demo-Animation über eine Sinuskurve:
 
 ```csharp
