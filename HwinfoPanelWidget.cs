@@ -192,6 +192,14 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                     DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
                     DrawFpsCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
                     DrawLogoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), accentColor, titleFont, detailFont);
+
+                    if (WidgetSize.Width >= 5 && WidgetSize.Height >= 4)
+                    {
+                        int infoTop = bottomTop + 135 + gap;
+                        DrawInfoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), "CPU FAN", $"{data.CpuFanRpm:0} RPM", accentColor, titleFont, detailFont);
+                        DrawInfoCard(graphics, new Rectangle(margin + smallWidth + gap, infoTop, smallWidth, 120), "GPU FAN", $"{data.GpuFanRpm:0} RPM", accentColor, titleFont, detailFont);
+                        DrawInfoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), "RAM USED", $"{data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB", accentColor, titleFont, detailFont);
+                    }
                 }
             }
 
@@ -272,6 +280,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString("WIGIDASH", titleFont, white, bounds.X + 20, bounds.Y + 24);
         graphics.DrawString("HWiNFO", detailFont, red, bounds.X + 20, bounds.Y + 62);
         graphics.DrawString("CUSTOM PANEL", detailFont, white, bounds.X + 20, bounds.Y + 90);
+    }
+
+    private static void DrawInfoCard(Graphics graphics, Rectangle bounds, string label, string value, Color accent, Font titleFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accent);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString(label, titleFont, white, bounds.X + 14, bounds.Y + 14);
+        graphics.DrawString(value, detailFont, muted, bounds.X + 14, bounds.Y + 54);
+        graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 86, bounds.Width - 28, 4);
     }
 
     private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, Brush accent, Font detailFont, Brush white)
