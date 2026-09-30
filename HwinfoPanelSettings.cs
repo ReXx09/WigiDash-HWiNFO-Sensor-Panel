@@ -91,9 +91,17 @@ public sealed class HwinfoPanelSettings : UserControl
         panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 6, 0, 2) });
         ComboBox selector = new() { Width = 280, Tag = slot, DisplayMemberPath = "Label" };
         List<SensorOption> options = widget.AvailableSensors
+            .Where(sensor => MatchesSlot(sensor, slot))
             .Select(sensor => new SensorOption(sensor))
             .OrderBy(option => option.Label)
             .ToList();
+        if (options.Count == 0)
+        {
+            options = widget.AvailableSensors
+                .Select(sensor => new SensorOption(sensor))
+                .OrderBy(option => option.Label)
+                .ToList();
+        }
         selector.ItemsSource = options;
         Guid? selectedGuid = widget.GetBoundSensor(slot);
         selector.SelectedItem = selectedGuid.HasValue
@@ -101,6 +109,33 @@ public sealed class HwinfoPanelSettings : UserControl
             : null;
         selector.SelectionChanged += SensorSelector_SelectionChanged;
         panel.Children.Add(selector);
+    }
+
+    private static bool MatchesSlot(SensorItem sensor, SensorSlot slot)
+    {
+        string source = sensor.Source ?? string.Empty;
+        string name = sensor.Name ?? string.Empty;
+        string text = $"{source} {name}";
+        bool isCpu = text.IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     text.IndexOf("Processor", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool isGpu = text.IndexOf("GPU", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     text.IndexOf("GeForce", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     text.IndexOf("Radeon", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool isMemory = text.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        text.IndexOf("RAM", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        if (slot == SensorSlot.CpuLoad || slot == SensorSlot.CpuTemperature || slot == SensorSlot.CpuClock ||
+            slot == SensorSlot.CpuPower || slot == SensorSlot.CpuFan)
+            return isCpu && !isGpu;
+
+        if (slot == SensorSlot.GpuLoad || slot == SensorSlot.GpuTemperature || slot == SensorSlot.GpuClock ||
+            slot == SensorSlot.GpuPower || slot == SensorSlot.GpuMemory || slot == SensorSlot.GpuFan)
+            return isGpu;
+
+        if (slot == SensorSlot.MemoryLoad || slot == SensorSlot.MemoryUsed)
+            return isMemory && !isCpu && !isGpu;
+
+        return true;
     }
 
     private void SensorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
