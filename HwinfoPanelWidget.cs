@@ -172,9 +172,12 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
                 bool compact = WidgetSize.Width <= 2 && WidgetSize.Height <= 2;
+                bool singleRow = WidgetSize.Width == 5 && WidgetSize.Height == 1;
                 graphics.Clear(Color.FromArgb(12, 14, 18));
 
-                if (compact)
+                if (singleRow)
+                    DrawFiveByOnePanel(graphics, next.Width, next.Height, data);
+                else if (compact)
                     DrawCompactPanel(graphics, next.Width, next.Height, data, titleFont, valueFont, detailFont);
                 else
                 {
@@ -337,6 +340,47 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString($"{temperature:0} °C", detailFont, white, width * 3 / 4 - 30, centerY - 8);
         graphics.DrawString($"Clock {clock:0} MHz", detailFont, white, width / 2 - 64, height - 42);
         graphics.DrawString($"Power {power:0} W", detailFont, white, width / 2 - 58, height - 22);
+    }
+
+    private void DrawFiveByOnePanel(Graphics graphics, int width, int height, SensorSnapshot data)
+    {
+        using Font titleFont = new("Segoe UI", 12, FontStyle.Bold);
+        using Font detailFont = new("Segoe UI", 9);
+        using Font valueFont = new("Segoe UI", 16, FontStyle.Bold);
+        int gap = 10;
+        int margin = 8;
+        int cardWidth = (width - margin * 2 - gap) / 2;
+        Rectangle cpuBounds = new(margin, margin, cardWidth, height - margin * 2);
+        Rectangle gpuBounds = new(margin + cardWidth + gap, margin, cardWidth, height - margin * 2);
+        DrawFiveByOneCard(graphics, cpuBounds, "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, titleFont, detailFont, valueFont);
+        DrawFiveByOneCard(graphics, gpuBounds, "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, titleFont, detailFont, valueFont);
+    }
+
+    private void DrawFiveByOneCard(Graphics graphics, Rectangle bounds, string label, string model, double load, double temperature, double clock, double power, Font titleFont, Font detailFont, Font valueFont)
+    {
+        DrawCardFrame(graphics, bounds, accentColor);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString(label, titleFont, white, bounds.X + 10, bounds.Y + 7);
+        graphics.DrawString(model, detailFont, muted, bounds.X + 10, bounds.Y + 27);
+        DrawGauge(graphics, new Point(bounds.X + 62, bounds.Y + bounds.Height / 2 + 9), 30, load, accentColor);
+        graphics.DrawString($"{load:0}%", valueFont, white, bounds.X + 45, bounds.Y + bounds.Height / 2 - 4);
+        graphics.DrawString("LOAD", detailFont, muted, bounds.X + 44, bounds.Y + bounds.Height / 2 + 26);
+        int metricX = bounds.X + 115;
+        DrawCompactMetric(graphics, metricX, bounds.Y + 25, "TEMP", $"{temperature:0} °C", temperature / 100);
+        DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000);
+        DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300);
+    }
+
+    private void DrawCompactMetric(Graphics graphics, int x, int y, string label, string value, double progress)
+    {
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString(label, new Font("Segoe UI", 8), muted, x, y);
+        graphics.DrawString(value, new Font("Segoe UI", 8), white, x + 42, y);
+        double clamped = progress < 0 ? 0 : progress > 1 ? 1 : progress;
+        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 14, 155, 2);
+        graphics.FillRectangle(new SolidBrush(accentColor), x, y + 14, (float)(155 * clamped), 2);
     }
 
     private static void DrawGauge(Graphics graphics, Point center, int radius, double value, Color accent)
