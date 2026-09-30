@@ -1,6 +1,10 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Collections.Generic;
+using System.Linq;
+using WigiDashWidgetFramework;
 using DrawingColor = System.Drawing.Color;
 
 namespace HwinfoSensorPanel;
@@ -33,6 +37,13 @@ public sealed class HwinfoPanelSettings : UserControl
         panel.Children.Add(intervalSlider);
         intervalValue = new TextBlock { Margin = new Thickness(0, 4, 0, 0) };
         panel.Children.Add(intervalValue);
+
+        panel.Children.Add(new TextBlock { Text = "HWiNFO-Sensoren", Margin = new Thickness(0, 18, 0, 8), FontWeight = FontWeights.Bold });
+        AddSensorSelector(panel, "CPU-Last", SensorSlot.CpuLoad);
+        AddSensorSelector(panel, "CPU-Temperatur", SensorSlot.CpuTemperature);
+        AddSensorSelector(panel, "GPU-Last", SensorSlot.GpuLoad);
+        AddSensorSelector(panel, "GPU-Temperatur", SensorSlot.GpuTemperature);
+        AddSensorSelector(panel, "RAM-Last", SensorSlot.MemoryLoad);
 
         Button updateButton = new() { Content = "Jetzt aktualisieren", Margin = new Thickness(0, 18, 0, 0), Padding = new Thickness(10, 5, 10, 5) };
         updateButton.Click += UpdateButton_Click;
@@ -67,6 +78,29 @@ public sealed class HwinfoPanelSettings : UserControl
         intervalValue.Text = $"{(int)intervalSlider.Value} ms";
     }
 
+    private void AddSensorSelector(StackPanel panel, string label, SensorSlot slot)
+    {
+        panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 6, 0, 2) });
+        ComboBox selector = new() { Width = 280, Tag = slot, DisplayMemberPath = "Label" };
+        List<SensorOption> options = widget.AvailableSensors
+            .Select(sensor => new SensorOption(sensor))
+            .OrderBy(option => option.Label)
+            .ToList();
+        selector.ItemsSource = options;
+        Guid? selectedGuid = widget.GetBoundSensor(slot);
+        selector.SelectedItem = selectedGuid.HasValue
+            ? options.FirstOrDefault(option => option.Sensor.Guid == selectedGuid.Value)
+            : null;
+        selector.SelectionChanged += SensorSelector_SelectionChanged;
+        panel.Children.Add(selector);
+    }
+
+    private void SensorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox selector && selector.SelectedItem is SensorOption option && selector.Tag is SensorSlot slot)
+            widget.BindSensor(slot, option.Sensor.Guid);
+    }
+
     private void UpdateButton_Click(object sender, RoutedEventArgs e)
     {
         widget.UpdateNow();
@@ -79,5 +113,17 @@ public sealed class HwinfoPanelSettings : UserControl
         if (color.G > color.R && color.G > color.B)
             return 2;
         return 0;
+    }
+
+    private sealed class SensorOption
+    {
+        public SensorOption(SensorItem sensor)
+        {
+            Sensor = sensor;
+            Label = $"{sensor.Source} / {sensor.Name} ({sensor.Unit})";
+        }
+
+        public SensorItem Sensor { get; }
+        public string Label { get; }
     }
 }

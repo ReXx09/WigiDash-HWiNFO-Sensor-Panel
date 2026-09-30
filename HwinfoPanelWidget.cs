@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
@@ -30,6 +31,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         sensorSource = source;
         bitmap = new Bitmap(widgetSize.ToSize().Width, widgetSize.ToSize().Height);
         LoadSettings();
+        LoadSensorBindings();
         drawThread = new Thread(DrawLoop) { IsBackground = true };
         drawThread.Start();
     }
@@ -49,6 +51,21 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
     public Color AccentColor => accentColor;
     public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
+    public IReadOnlyList<SensorItem> AvailableSensors => (sensorSource as ManagerSensorSource)?.Sensors ?? Array.Empty<SensorItem>();
+
+    public Guid? GetBoundSensor(SensorSlot slot)
+    {
+        return (sensorSource as ManagerSensorSource)?.GetBinding(slot);
+    }
+
+    public void BindSensor(SensorSlot slot, Guid sensorGuid)
+    {
+        if ((sensorSource as ManagerSensorSource)?.Bind(slot, sensorGuid) == true)
+        {
+            factory.WidgetManager?.StoreSetting(this, $"Sensor.{slot}", sensorGuid.ToString());
+            RequestUpdate();
+        }
+    }
 
     public void SetAccentColor(Color color)
     {
@@ -108,6 +125,19 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (factory.WidgetManager.LoadSetting(this, "UpdateInterval", out string savedInterval) &&
             int.TryParse(savedInterval, out int interval))
             updateIntervalMilliseconds = interval < 100 ? 100 : interval > 2000 ? 2000 : interval;
+    }
+
+    private void LoadSensorBindings()
+    {
+        if (!(sensorSource is ManagerSensorSource managerSource) || factory.WidgetManager == null)
+            return;
+
+        foreach (SensorSlot slot in Enum.GetValues(typeof(SensorSlot)))
+        {
+            if (factory.WidgetManager.LoadSetting(this, $"Sensor.{slot}", out string savedGuid) &&
+                Guid.TryParse(savedGuid, out Guid sensorGuid))
+                managerSource.Bind(slot, sensorGuid);
+        }
     }
 
     private void Draw(SensorSnapshot data)

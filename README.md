@@ -7,7 +7,9 @@ Dieses Projekt ist ein grafisches 5x4-WigiDash-Widget. Die Oberfläche wird voll
 - grafisches CPU-/GPU-Panel im Stil des Referenzbildes
 - RAM-, FPS- und Statusbereiche
 - animierte Demo-Werte zum Testen des Layouts
-- austauschbare `ISensorSource`-Schnittstelle für HWiNFO
+- echte WigiDash-Sensorquelle über `GetSensorList()` und `SensorUpdated`
+- auswählbare CPU-, GPU- und RAM-Sensoren im Bearbeitungsmenü
+- Demo-Fallback außerhalb des WigiDash Managers
 
 ## Bauen
 
@@ -41,4 +43,4 @@ Ist der WigiDash Manager während des Builds geöffnet, kann die DLL gesperrt se
 
 ## Nächster Schritt
 
-`DemoSensorSource` wird durch eine HWiNFO-Shared-Memory-Implementierung ersetzt. Dafür müssen einmalig die HWiNFO-Sensornamen auf CPU Package, GPU Temperature, GPU Load, RAM und FPS zugeordnet werden.
+Im WigiDash Manager werden die Sensoren aus der SDK-Sensorliste bezogen. HWiNFO muss dafür laufen und seine Sensorintegration im Manager verfügbar sein. CPU-Last, CPU-Temperatur, GPU-Last, GPU-Temperatur und RAM-Last können im Bearbeitungsmenü ausgewählt werden. FPS bleibt eine separate Anzeige und benötigt später eine eigene Quelle.

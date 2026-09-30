@@ -31,7 +31,8 @@ public sealed class HwinfoPanelFactory : IWidgetObject
 
     public IWidgetInstance CreateWidgetInstance(WidgetSize widgetSize, Guid instanceGuid)
     {
-        return new HwinfoPanelWidget(this, widgetSize, instanceGuid, new DemoSensorSource());
+        ISensorSource source = WidgetManager == null ? new DemoSensorSource() : new ManagerSensorSource(WidgetManager);
+        return new HwinfoPanelWidget(this, widgetSize, instanceGuid, source);
     }
 
     public bool RemoveWidgetInstance(Guid instanceGuid) => true;
