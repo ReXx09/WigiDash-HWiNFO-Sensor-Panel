@@ -43,6 +43,12 @@ public sealed class ManagerSensorSource : ISensorSource
         return manager.AddMonitoringItem(sensor);
     }
 
+    public bool IsCompatible(SensorSlot slot, Guid sensorGuid)
+    {
+        SensorItem sensor = sensors.FirstOrDefault(item => item.Guid == sensorGuid);
+        return sensor != null && ScoreSensor(sensor, slot) > 0;
+    }
+
     public SensorSnapshot Read()
     {
         return new SensorSnapshot

@@ -140,7 +140,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         foreach (SensorSlot slot in Enum.GetValues(typeof(SensorSlot)))
         {
             if (factory.WidgetManager.LoadSetting(this, $"Sensor.{slot}", out string savedGuid) &&
-                Guid.TryParse(savedGuid, out Guid sensorGuid))
+                Guid.TryParse(savedGuid, out Guid sensorGuid) &&
+                managerSource.IsCompatible(slot, sensorGuid))
                 managerSource.Bind(slot, sensorGuid);
         }
     }
