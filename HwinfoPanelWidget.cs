@@ -190,7 +190,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                 graphics.Clear(Color.FromArgb(12, 14, 18));
 
                 if (singleRow)
-                    DrawFiveByOnePanel(graphics, next.Width, next.Height, data);
+                    DrawFiveByOnePanel(graphics, next.Width, next.Height, data, WidgetSize.Width != 3);
                 else if (compact)
                     DrawCompactPanel(graphics, next.Width, next.Height, data, titleFont, valueFont, detailFont);
                 else
@@ -356,7 +356,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString($"Power {power:0} W", detailFont, white, width / 2 - 58, height - 22);
     }
 
-    private void DrawFiveByOnePanel(Graphics graphics, int width, int height, SensorSnapshot data)
+    private void DrawFiveByOnePanel(Graphics graphics, int width, int height, SensorSnapshot data, bool showTemperatureGauge)
     {
         using Font titleFont = new("Segoe UI", 12, FontStyle.Bold);
         using Font detailFont = new("Segoe UI", 9);
@@ -366,11 +366,11 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         int cardWidth = (width - margin * 2 - gap) / 2;
         Rectangle cpuBounds = new(margin, margin, cardWidth, height - margin * 2);
         Rectangle gpuBounds = new(margin + cardWidth + gap, margin, cardWidth, height - margin * 2);
-        DrawFiveByOneCard(graphics, cpuBounds, "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, titleFont, detailFont, valueFont);
-        DrawFiveByOneCard(graphics, gpuBounds, "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, titleFont, detailFont, valueFont);
+        DrawFiveByOneCard(graphics, cpuBounds, "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, showTemperatureGauge, titleFont, detailFont, valueFont);
+        DrawFiveByOneCard(graphics, gpuBounds, "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, showTemperatureGauge, titleFont, detailFont, valueFont);
     }
 
-    private void DrawFiveByOneCard(Graphics graphics, Rectangle bounds, string label, string model, double load, double temperature, double clock, double power, Font titleFont, Font detailFont, Font valueFont)
+    private void DrawFiveByOneCard(Graphics graphics, Rectangle bounds, string label, string model, double load, double temperature, double clock, double power, bool showTemperatureGauge, Font titleFont, Font detailFont, Font valueFont)
     {
         DrawCardFrame(graphics, bounds, accentColor);
         using Brush white = new SolidBrush(Color.White);
@@ -394,10 +394,15 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawGauge(graphics, loadCenter, gaugeRadius, load, accentColor, gaugeWidth);
         DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
         DrawCenteredText(graphics, "LOAD", detailFont, muted, loadCenter.X, loadCenter.Y + gaugeRadius - 7);
-        DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, accentColor, gaugeWidth);
-        DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
-        DrawCenteredText(graphics, "TEMP", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + gaugeRadius - 7);
-        int metricX = bounds.X + (bounds.Width - 155) / 2;
+        int metricX = showTemperatureGauge ? bounds.X + (bounds.Width - 155) / 2 : bounds.Right - 165;
+        if (showTemperatureGauge)
+        {
+            DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, accentColor, gaugeWidth);
+            DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
+            DrawCenteredText(graphics, "TEMP", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + gaugeRadius - 7);
+        }
+        else
+            DrawCompactMetric(graphics, metricX, bounds.Y + 25, "TEMP", $"{temperature:0} °C", temperature / 100);
         DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000);
         DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300);
     }
