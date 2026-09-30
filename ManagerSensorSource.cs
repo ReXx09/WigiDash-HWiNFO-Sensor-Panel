@@ -21,7 +21,14 @@ public sealed class ManagerSensorSource : ISensorSource
         BindDefaults();
     }
 
-    public IReadOnlyList<SensorItem> Sensors => sensors;
+    public IReadOnlyList<SensorItem> Sensors
+    {
+        get
+        {
+            lock (stateLock)
+                return sensors.ToArray();
+        }
+    }
 
     public Guid? GetBinding(SensorSlot slot)
     {
