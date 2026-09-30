@@ -171,24 +171,27 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             {
                 graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                graphics.ScaleTransform(next.Width / ReferenceWidth, next.Height / ReferenceHeight);
+                bool compact = WidgetSize.Width <= 2 && WidgetSize.Height <= 2;
                 graphics.Clear(Color.FromArgb(12, 14, 18));
-                DrawHeader(graphics, titleFont, detailFont, data, accentColor);
 
-                if (WidgetSize.Width <= 2 && WidgetSize.Height <= 2)
+                if (compact)
                     DrawCompactPanel(graphics, next.Width, next.Height, data, titleFont, valueFont, detailFont);
                 else
                 {
+                    float referenceHeight = WidgetSize.Height >= 4 ? ReferenceHeight : 447f;
+                    graphics.ScaleTransform(next.Width / ReferenceWidth, next.Height / referenceHeight);
+                    DrawHeader(graphics, titleFont, detailFont, data, accentColor);
+
                     int margin = 12;
                     int gap = 12;
                     int top = 72;
-                    int largeWidth = (next.Width - margin * 2 - gap) / 2;
+                    int largeWidth = ((int)ReferenceWidth - margin * 2 - gap) / 2;
                     int largeHeight = 220;
                     DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
                     DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
 
                     int bottomTop = top + largeHeight + gap;
-                    int smallWidth = (next.Width - margin * 2 - gap * 2) / 3;
+                    int smallWidth = ((int)ReferenceWidth - margin * 2 - gap * 2) / 3;
                     DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
                     DrawFpsCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
                     DrawLogoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), accentColor, titleFont, detailFont);
@@ -312,18 +315,28 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         double power = gpu ? data.GpuPowerWatts : data.CpuPowerWatts;
         string model = gpu ? data.GpuName : data.CpuName;
         int centerY = height / 2;
-        DrawGauge(graphics, new Point(105, centerY), 62, load, accentColor);
-        DrawGauge(graphics, new Point(width - 105, centerY), 62, temperature / 100 * 100, accentColor);
+        if (width < 300)
+        {
+            int radius = Math.Max(24, Math.Min(width, height) / 4);
+            DrawGauge(graphics, new Point(width / 2, centerY + 12), radius, load, accentColor);
+            using Brush compactWhite = new SolidBrush(Color.White);
+            graphics.DrawString($"{load:0}%", valueFont, compactWhite, width / 2 - 22, centerY - 8);
+            graphics.DrawString(label, titleFont, compactWhite, 12, 10);
+            graphics.DrawString($"{temperature:0} °C", detailFont, compactWhite, 12, height - 24);
+            return;
+        }
+
+        int radiusDual = Math.Max(30, Math.Min(58, Math.Min(width / 5, height / 2 - 18)));
+        DrawGauge(graphics, new Point(width / 4, centerY + 8), radiusDual, load, accentColor);
+        DrawGauge(graphics, new Point(width * 3 / 4, centerY + 8), radiusDual, temperature, accentColor);
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(165, 175, 188));
-        graphics.DrawString(label, titleFont, white, 20, 18);
-        graphics.DrawString(model, detailFont, muted, 20, 46);
-        graphics.DrawString($"{load:0}%", valueFont, white, 72, centerY - 18);
-        graphics.DrawString("LOAD", detailFont, muted, 78, centerY + 24);
-        graphics.DrawString($"{temperature:0} °C", valueFont, white, width - 154, centerY - 18);
-        graphics.DrawString("TEMP", detailFont, muted, width - 145, centerY + 24);
-        graphics.DrawString($"Clock  {clock:0} MHz", detailFont, white, width / 2 - 90, centerY - 18);
-        graphics.DrawString($"Power  {power:0} W", detailFont, white, width / 2 - 90, centerY + 12);
+        graphics.DrawString(label, titleFont, white, 14, 10);
+        graphics.DrawString(model, detailFont, muted, 14, 34);
+        graphics.DrawString($"{load:0}%", valueFont, white, width / 4 - 22, centerY - 8);
+        graphics.DrawString($"{temperature:0} °C", detailFont, white, width * 3 / 4 - 30, centerY - 8);
+        graphics.DrawString($"Clock {clock:0} MHz", detailFont, white, width / 2 - 64, height - 42);
+        graphics.DrawString($"Power {power:0} W", detailFont, white, width / 2 - 58, height - 22);
     }
 
     private static void DrawGauge(Graphics graphics, Point center, int radius, double value, Color accent)
