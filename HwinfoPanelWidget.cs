@@ -17,8 +17,11 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private readonly HwinfoPanelFactory factory;
     private readonly ISensorSource sensorSource;
     private readonly object bitmapLock = new();
+    private readonly object drawLock = new();
     private readonly Thread drawThread;
     private volatile bool running = true;
+    private readonly int bitmapWidth;
+    private readonly int bitmapHeight;
     private Bitmap bitmap;
     private Color accentColor = Color.FromArgb(230, 35, 38);
     private int updateIntervalMilliseconds = 250;
@@ -29,7 +32,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         WidgetSize = widgetSize;
         Guid = instanceGuid;
         sensorSource = source;
-        bitmap = new Bitmap(widgetSize.ToSize().Width, widgetSize.ToSize().Height);
+        bitmapWidth = widgetSize.ToSize().Width;
+        bitmapHeight = widgetSize.ToSize().Height;
+        bitmap = new Bitmap(bitmapWidth, bitmapHeight);
         LoadSettings();
         LoadSensorBindings();
         drawThread = new Thread(DrawLoop) { IsBackground = true };
@@ -142,38 +147,41 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
     private void Draw(SensorSnapshot data)
     {
-        Bitmap next = new(bitmap.Width, bitmap.Height);
-        using (Graphics graphics = Graphics.FromImage(next))
-        using (Font titleFont = new("Segoe UI", 15, FontStyle.Bold))
-        using (Font valueFont = new("Segoe UI", 22, FontStyle.Bold))
-        using (Font detailFont = new("Segoe UI", 11))
+        lock (drawLock)
         {
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-            graphics.ScaleTransform(next.Width / ReferenceWidth, next.Height / ReferenceHeight);
-            graphics.Clear(Color.FromArgb(12, 14, 18));
-            DrawHeader(graphics, titleFont, detailFont, data, accentColor);
+            Bitmap next = new(bitmapWidth, bitmapHeight);
+            using (Graphics graphics = Graphics.FromImage(next))
+            using (Font titleFont = new("Segoe UI", 15, FontStyle.Bold))
+            using (Font valueFont = new("Segoe UI", 22, FontStyle.Bold))
+            using (Font detailFont = new("Segoe UI", 11))
+            {
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                graphics.ScaleTransform(next.Width / ReferenceWidth, next.Height / ReferenceHeight);
+                graphics.Clear(Color.FromArgb(12, 14, 18));
+                DrawHeader(graphics, titleFont, detailFont, data, accentColor);
 
-            int margin = 12;
-            int gap = 12;
-            int top = 72;
-            int largeWidth = (next.Width - margin * 2 - gap) / 2;
-            int largeHeight = 220;
-            DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", "Intel Core i7-12700KF", data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
-            DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", "GeForce RTX", data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
+                int margin = 12;
+                int gap = 12;
+                int top = 72;
+                int largeWidth = (next.Width - margin * 2 - gap) / 2;
+                int largeHeight = 220;
+                DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", "Intel Core i7-12700KF", data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
+                DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", "GeForce RTX", data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
 
-            int bottomTop = top + largeHeight + gap;
-            int smallWidth = (next.Width - margin * 2 - gap * 2) / 3;
-            DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
-            DrawFpsCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
-            DrawLogoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), accentColor, titleFont, detailFont);
-        }
+                int bottomTop = top + largeHeight + gap;
+                int smallWidth = (next.Width - margin * 2 - gap * 2) / 3;
+                DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
+                DrawFpsCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
+                DrawLogoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), accentColor, titleFont, detailFont);
+            }
 
-        lock (bitmapLock)
-        {
-            Bitmap old = bitmap;
-            bitmap = next;
-            old.Dispose();
+            lock (bitmapLock)
+            {
+                Bitmap old = bitmap;
+                bitmap = next;
+                old.Dispose();
+            }
         }
     }
 
