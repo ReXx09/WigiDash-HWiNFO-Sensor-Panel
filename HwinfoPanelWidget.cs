@@ -1,0 +1,258 @@
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
+using System.Threading;
+using System.Windows.Controls;
+using WigiDashWidgetFramework;
+using WigiDashWidgetFramework.WidgetUtility;
+
+namespace HwinfoSensorPanel;
+
+public sealed class HwinfoPanelWidget : IWidgetInstance
+{
+    private const float ReferenceWidth = 1016f;
+    private const float ReferenceHeight = 592f;
+    private readonly HwinfoPanelFactory factory;
+    private readonly ISensorSource sensorSource;
+    private readonly object bitmapLock = new();
+    private readonly Thread drawThread;
+    private volatile bool running = true;
+    private Bitmap bitmap;
+    private Color accentColor = Color.FromArgb(230, 35, 38);
+    private int updateIntervalMilliseconds = 250;
+
+    public HwinfoPanelWidget(HwinfoPanelFactory parent, WidgetSize widgetSize, Guid instanceGuid, ISensorSource source)
+    {
+        factory = parent;
+        WidgetSize = widgetSize;
+        Guid = instanceGuid;
+        sensorSource = source;
+        bitmap = new Bitmap(widgetSize.ToSize().Width, widgetSize.ToSize().Height);
+        LoadSettings();
+        drawThread = new Thread(DrawLoop) { IsBackground = true };
+        drawThread.Start();
+    }
+
+    public IWidgetObject WidgetObject => factory;
+    public Guid Guid { get; }
+    public WidgetSize WidgetSize { get; }
+    public event WidgetUpdatedEventHandler WidgetUpdated;
+
+    public void RequestUpdate() => PublishBitmap();
+
+    public void ClickEvent(ClickType clickType, int x, int y)
+    {
+    }
+
+    public UserControl GetSettingsControl() => new HwinfoPanelSettings(this);
+
+    public Color AccentColor => accentColor;
+    public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
+
+    public void SetAccentColor(Color color)
+    {
+        accentColor = color;
+        factory.WidgetManager?.StoreSetting(this, "AccentColor", ColorTranslator.ToHtml(color));
+        RequestUpdate();
+    }
+
+    public void SetUpdateInterval(int milliseconds)
+    {
+        updateIntervalMilliseconds = milliseconds;
+        factory.WidgetManager?.StoreSetting(this, "UpdateInterval", milliseconds.ToString());
+        RequestUpdate();
+    }
+
+    public void UpdateNow()
+    {
+        Draw(sensorSource.Read());
+        PublishBitmap();
+    }
+
+    public void EnterSleep()
+    {
+    }
+
+    public void ExitSleep() => PublishBitmap();
+
+    public void Dispose()
+    {
+        running = false;
+        if (drawThread.IsAlive) drawThread.Join(500);
+        sensorSource.Dispose();
+        lock (bitmapLock)
+        {
+            bitmap.Dispose();
+        }
+    }
+
+    private void DrawLoop()
+    {
+        while (running)
+        {
+            Draw(sensorSource.Read());
+            PublishBitmap();
+            Thread.Sleep(updateIntervalMilliseconds);
+        }
+    }
+
+    private void LoadSettings()
+    {
+        if (factory.WidgetManager == null)
+            return;
+
+        if (factory.WidgetManager.LoadSetting(this, "AccentColor", out string savedColor))
+            accentColor = ColorTranslator.FromHtml(savedColor);
+
+        if (factory.WidgetManager.LoadSetting(this, "UpdateInterval", out string savedInterval) &&
+            int.TryParse(savedInterval, out int interval))
+            updateIntervalMilliseconds = interval < 100 ? 100 : interval > 2000 ? 2000 : interval;
+    }
+
+    private void Draw(SensorSnapshot data)
+    {
+        Bitmap next = new(bitmap.Width, bitmap.Height);
+        using (Graphics graphics = Graphics.FromImage(next))
+        using (Font titleFont = new("Segoe UI", 15, FontStyle.Bold))
+        using (Font valueFont = new("Segoe UI", 22, FontStyle.Bold))
+        using (Font detailFont = new("Segoe UI", 11))
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            graphics.ScaleTransform(next.Width / ReferenceWidth, next.Height / ReferenceHeight);
+            graphics.Clear(Color.FromArgb(12, 14, 18));
+            DrawHeader(graphics, titleFont, detailFont, data, accentColor);
+
+            int margin = 12;
+            int gap = 12;
+            int top = 72;
+            int largeWidth = (next.Width - margin * 2 - gap) / 2;
+            int largeHeight = 220;
+            DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", "Intel Core i7-12700KF", data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
+            DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", "GeForce RTX", data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
+
+            int bottomTop = top + largeHeight + gap;
+            int smallWidth = (next.Width - margin * 2 - gap * 2) / 3;
+            DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
+            DrawFpsCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
+            DrawLogoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), accentColor, titleFont, detailFont);
+        }
+
+        lock (bitmapLock)
+        {
+            Bitmap old = bitmap;
+            bitmap = next;
+            old.Dispose();
+        }
+    }
+
+    private void PublishBitmap()
+    {
+        Bitmap copy;
+        lock (bitmapLock)
+        {
+            copy = new Bitmap(bitmap);
+        }
+
+        WidgetUpdated?.Invoke(this, new WidgetUpdatedEventArgs { WidgetBitmap = copy, WaitMax = 250 });
+        copy.Dispose();
+    }
+
+    private static void DrawHeader(Graphics graphics, Font titleFont, Font detailFont, SensorSnapshot data, Color accent)
+    {
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(170, 178, 190));
+        graphics.DrawString($"CPU   {data.CpuFanRpm} RPM     GPU   {data.GpuFanRpm} RPM", detailFont, muted, 18, 16);
+        graphics.DrawString("HWiNFO SENSOR PANEL", titleFont, white, 18, 37);
+        graphics.DrawString(DateTime.Now.ToString("HH:mm:ss"), detailFont, muted, 760, 22);
+        graphics.DrawString("LIVE", detailFont, new SolidBrush(accent), 760, 46);
+    }
+
+    private static void DrawCoreCard(Graphics graphics, Rectangle bounds, string label, string model, double load, double temperature, double clock, double power, Color accent, Font titleFont, Font valueFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accent);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        using Brush accentBrush = new SolidBrush(accent);
+        graphics.DrawString(label, titleFont, white, bounds.X + 18, bounds.Y + 14);
+        graphics.DrawString(model, detailFont, muted, bounds.X + 18, bounds.Y + 43);
+        DrawGauge(graphics, new Point(bounds.X + 100, bounds.Y + 135), 58, load, accent);
+        graphics.DrawString($"{load:0}%", valueFont, white, bounds.X + 72, bounds.Y + 112);
+        graphics.DrawString("Load", detailFont, muted, bounds.X + 87, bounds.Y + 148);
+        DrawMetric(graphics, bounds.X + 200, bounds.Y + 82, "Temperature", $"{temperature:0} °C", accentBrush, detailFont, white);
+        DrawMetric(graphics, bounds.X + 200, bounds.Y + 121, "Clock", $"{clock:0} MHz", accentBrush, detailFont, white);
+        DrawMetric(graphics, bounds.X + 200, bounds.Y + 160, "Power", $"{power:0} W", accentBrush, detailFont, white);
+    }
+
+    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accent);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString("RAM  DDR5-6000", titleFont, white, bounds.X + 14, bounds.Y + 12);
+        graphics.DrawString($"Load                         {data.MemoryLoadPercent:0}%", detailFont, muted, bounds.X + 14, bounds.Y + 50);
+        graphics.DrawString($"Used  {data.MemoryUsedGigabytes:0.0} GB / {data.MemoryTotalGigabytes:0} GB", detailFont, muted, bounds.X + 14, bounds.Y + 76);
+        graphics.DrawString("38-38-38-77 CR2", detailFont, muted, bounds.X + 14, bounds.Y + 102);
+    }
+
+    private static void DrawFpsCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accent);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString("FPS", titleFont, white, bounds.X + 14, bounds.Y + 12);
+        using Font fpsFont = new("Segoe UI", 42, FontStyle.Bold);
+        graphics.DrawString($"{data.Fps:0}", fpsFont, white, bounds.X + 14, bounds.Y + 45);
+        graphics.DrawString("Frame rate", detailFont, muted, bounds.X + 18, bounds.Y + 100);
+    }
+
+    private static void DrawLogoCard(Graphics graphics, Rectangle bounds, Color accent, Font titleFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accent);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush red = new SolidBrush(accent);
+        graphics.DrawString("WIGIDASH", titleFont, white, bounds.X + 20, bounds.Y + 24);
+        graphics.DrawString("HWiNFO", detailFont, red, bounds.X + 20, bounds.Y + 62);
+        graphics.DrawString("CUSTOM PANEL", detailFont, white, bounds.X + 20, bounds.Y + 90);
+    }
+
+    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, Brush accent, Font detailFont, Brush white)
+    {
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString(label, detailFont, muted, x, y);
+        graphics.DrawString(value, detailFont, white, x + 108, y);
+        graphics.FillRectangle(accent, x, y + 22, 220, 4);
+    }
+
+    private static void DrawGauge(Graphics graphics, Point center, int radius, double value, Color accent)
+    {
+        using Pen backgroundPen = new(Color.FromArgb(70, 78, 88), 10);
+        using Pen valuePen = new(accent, 10);
+        graphics.DrawArc(backgroundPen, center.X - radius, center.Y - radius, radius * 2, radius * 2, 135, 270);
+        double clampedValue = value < 0 ? 0 : value > 100 ? 100 : value;
+        graphics.DrawArc(valuePen, center.X - radius, center.Y - radius, radius * 2, radius * 2, 135, (float)(270 * clampedValue / 100));
+    }
+
+    private static void DrawCardFrame(Graphics graphics, Rectangle bounds, Color accent)
+    {
+        using Pen border = new(accent, 2);
+        using Brush background = new SolidBrush(Color.FromArgb(22, 25, 31));
+        graphics.FillRectangle(background, bounds);
+        graphics.DrawRectangle(border, bounds);
+    }
+
+    public static Bitmap CreatePreview(WidgetSize widgetSize)
+    {
+        using DemoSensorSource source = new();
+        HwinfoPanelFactory factory = new();
+        using HwinfoPanelWidget widget = new(factory, widgetSize, Guid.NewGuid(), source);
+        Thread.Sleep(20);
+        Bitmap preview;
+        lock (widget.bitmapLock)
+        {
+            preview = new Bitmap(widget.bitmap);
+        }
+        return preview;
+    }
+}

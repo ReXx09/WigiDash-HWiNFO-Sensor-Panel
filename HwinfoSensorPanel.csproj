@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>HwinfoSensorPanel</RootNamespace>
+    <AssemblyName>B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D3</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Platforms>AnyCPU;x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <WigiDashManagerPath Condition="'$(WigiDashManagerPath)' == ''">C:\Program Files (x86)\G.SKILL\WigiDash Manager</WigiDashManagerPath>
+    <WigiDashWidgetId>B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D3</WigiDashWidgetId>
+    <WigiDashUserWidgetsPath Condition="'$(WigiDashUserWidgetsPath)' == ''">$(APPDATA)\G.SKILL\WigiDashManager\Widgets</WigiDashUserWidgetsPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="WigiDashWidgetFramework">
+      <HintPath>$(WigiDashManagerPath)\WigiDashWidgetFramework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <Target Name="DeployToWigiDash" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <WigiDashTargetFolder>$(WigiDashUserWidgetsPath)\$(WigiDashWidgetId)</WigiDashTargetFolder>
+    </PropertyGroup>
+    <MakeDir Directories="$(WigiDashTargetFolder)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(WigiDashTargetFolder)" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" />
+    <Message Importance="High" Text="WigiDash Widget Zielordner: $(WigiDashTargetFolder)" />
+  </Target>
+</Project>
