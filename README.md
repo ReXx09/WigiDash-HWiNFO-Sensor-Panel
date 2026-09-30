@@ -11,6 +11,19 @@ Dieses Projekt ist ein grafisches 5x4-WigiDash-Widget. Die Oberfläche wird voll
 - auswählbare CPU-, GPU- und RAM-Sensoren im Bearbeitungsmenü
 - Demo-Fallback außerhalb des WigiDash Managers
 
+## Demo-Animation
+
+Wenn das Widget außerhalb des WigiDash Managers erzeugt wird, verwendet es [`DemoSensorSource`](DemoSensorSource.cs). Die Quelle erzeugt eine laufende Demo-Animation über eine Sinuskurve:
+
+```csharp
+double seconds = (DateTime.UtcNow - started).TotalSeconds;
+double wave = (Math.Sin(seconds * 0.9) + 1) / 2;
+```
+
+Damit verändern sich CPU-/GPU-Last, Temperaturen, Taktraten, Leistungsaufnahme, RAM-Auslastung, FPS und Lüfterdrehzahlen kontinuierlich. Die Werte laufen dabei zwischen realistischen Minimal- und Maximalwerten, sodass die Gauges und Balken auch ohne HWiNFO sichtbar reagieren.
+
+Die animierte Vorschau wird unter anderem für das Widget-Preview und das Thumbnail verwendet. Im laufenden WigiDash Manager ersetzt `ManagerSensorSource` diese Demoquelle durch die echten Sensorsignale.
+
 ## Bauen
 
 Voraussetzungen:

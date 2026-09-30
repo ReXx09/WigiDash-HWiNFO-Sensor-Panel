@@ -361,13 +361,18 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawCardFrame(graphics, bounds, accentColor);
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
-        graphics.DrawString(label, titleFont, white, bounds.X + 10, bounds.Y + 7);
+        SizeF labelSize = graphics.MeasureString(label, titleFont);
+        graphics.DrawString(label, titleFont, white, bounds.X + (bounds.Width - labelSize.Width) / 2, bounds.Y + 7);
         graphics.DrawString(model, detailFont, muted, bounds.X + 10, bounds.Y + 27);
-        DrawGauge(graphics, new Point(bounds.X + 62, bounds.Y + bounds.Height / 2 + 9), 30, load, accentColor);
-        graphics.DrawString($"{load:0}%", valueFont, white, bounds.X + 45, bounds.Y + bounds.Height / 2 - 4);
-        graphics.DrawString("LOAD", detailFont, muted, bounds.X + 44, bounds.Y + bounds.Height / 2 + 26);
-        int metricX = bounds.X + 115;
-        DrawCompactMetric(graphics, metricX, bounds.Y + 25, "TEMP", $"{temperature:0} °C", temperature / 100);
+        int gaugeRadius = 24;
+        Point loadCenter = new(bounds.X + 58, bounds.Y + bounds.Height / 2 + 9);
+        Point temperatureCenter = new(bounds.Right - 44, bounds.Y + bounds.Height / 2 + 9);
+        DrawGauge(graphics, loadCenter, gaugeRadius, load, accentColor);
+        graphics.DrawString($"{load:0}%", valueFont, white, loadCenter.X - 17, loadCenter.Y - 9);
+        graphics.DrawString("LOAD", detailFont, muted, loadCenter.X - 18, loadCenter.Y + 25);
+        graphics.DrawString($"{temperature:0}°", detailFont, white, temperatureCenter.X - 13, temperatureCenter.Y - 7);
+        graphics.DrawString("TEMP", detailFont, muted, temperatureCenter.X - 16, temperatureCenter.Y + 25);
+        int metricX = bounds.X + 112;
         DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000);
         DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300);
     }
