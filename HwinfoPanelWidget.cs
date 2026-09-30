@@ -363,18 +363,33 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         SizeF labelSize = graphics.MeasureString(label, titleFont);
         graphics.DrawString(label, titleFont, white, bounds.X + (bounds.Width - labelSize.Width) / 2, bounds.Y + 7);
-        graphics.DrawString(model, detailFont, muted, bounds.X + 10, bounds.Y + 27);
-        int gaugeRadius = 24;
-        Point loadCenter = new(bounds.X + 58, bounds.Y + bounds.Height / 2 + 9);
-        Point temperatureCenter = new(bounds.Right - 44, bounds.Y + bounds.Height / 2 + 9);
+        using StringFormat centeredModel = new()
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Near,
+            Trimming = StringTrimming.EllipsisCharacter,
+            FormatFlags = StringFormatFlags.NoWrap
+        };
+        graphics.DrawString(model, detailFont, muted, new RectangleF(bounds.X + 10, bounds.Y + 27, bounds.Width - 20, 14), centeredModel);
+        int gaugeRadius = Math.Min(41, Math.Max(22, (int)Math.Round(bounds.Height / 3.0 * 1.2)));
+        int gaugeCenterY = bounds.Y + bounds.Height / 2 + 2;
+        Point loadCenter = new(bounds.X + gaugeRadius + 28, gaugeCenterY);
+        Point temperatureCenter = new(bounds.Right - gaugeRadius - 20, gaugeCenterY);
         DrawGauge(graphics, loadCenter, gaugeRadius, load, accentColor);
-        graphics.DrawString($"{load:0}%", valueFont, white, loadCenter.X - 17, loadCenter.Y - 9);
-        graphics.DrawString("LOAD", detailFont, muted, loadCenter.X - 18, loadCenter.Y + 25);
-        graphics.DrawString($"{temperature:0}°", detailFont, white, temperatureCenter.X - 13, temperatureCenter.Y - 7);
-        graphics.DrawString("TEMP", detailFont, muted, temperatureCenter.X - 16, temperatureCenter.Y + 25);
-        int metricX = bounds.X + 112;
+        DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - 9);
+        DrawCenteredText(graphics, "LOAD", detailFont, muted, loadCenter.X, loadCenter.Y + gaugeRadius + 4);
+        DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, accentColor);
+        DrawCenteredText(graphics, $"{temperature:0}°", valueFont, white, temperatureCenter.X, temperatureCenter.Y - 9);
+        DrawCenteredText(graphics, "TEMP", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + gaugeRadius + 4);
+        int metricX = bounds.X + (bounds.Width - 155) / 2;
         DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000);
         DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300);
+    }
+
+    private static void DrawCenteredText(Graphics graphics, string text, Font font, Brush brush, float centerX, float y)
+    {
+        SizeF size = graphics.MeasureString(text, font);
+        graphics.DrawString(text, font, brush, centerX - size.Width / 2, y);
     }
 
     private void DrawCompactMetric(Graphics graphics, int x, int y, string label, string value, double progress)
