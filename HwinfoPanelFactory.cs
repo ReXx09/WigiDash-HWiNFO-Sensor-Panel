@@ -10,7 +10,7 @@ public sealed class HwinfoPanelFactory : IWidgetObject
 {
     public Guid Guid => new("B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D3");
     public string Name => "HWiNFO Sensor Panel";
-    public string Author => "WigiDash custom widget";
+    public string Author => "by ReXx09";
     public string Website => "";
     public string Description => "Grafisches Sensorpanel mit HWiNFO-Daten.";
     public Version Version => new(0, 1, 0);
