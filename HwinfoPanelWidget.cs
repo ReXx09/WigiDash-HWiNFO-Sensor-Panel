@@ -15,6 +15,19 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 {
     private const float ReferenceWidth = 1016f;
     private const float ReferenceHeight = 592f;
+    private static readonly object sharedGaugeSettingsLock = new();
+    private static readonly HashSet<HwinfoPanelWidget> sharedGaugeWidgets = new();
+    private static bool sharedGaugeSettingsLoaded;
+    private static Color sharedGaugeLowColor = Color.FromArgb(55, 190, 105);
+    private static Color sharedGaugeMediumColor = Color.FromArgb(235, 190, 45);
+    private static Color sharedGaugeHighColor = Color.FromArgb(230, 35, 38);
+    private static int sharedGaugeWarningThreshold = 60;
+    private static int sharedGaugeCriticalThreshold = 85;
+    private static Color sharedTemperatureLowColor = Color.FromArgb(55, 190, 105);
+    private static Color sharedTemperatureMediumColor = Color.FromArgb(235, 190, 45);
+    private static Color sharedTemperatureHighColor = Color.FromArgb(230, 35, 38);
+    private static int sharedTemperatureWarningThreshold = 70;
+    private static int sharedTemperatureCriticalThreshold = 85;
     private readonly HwinfoPanelFactory factory;
     private readonly ISensorSource sensorSource;
     private readonly object bitmapLock = new();
@@ -26,6 +39,17 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private readonly int bitmapHeight;
     private Bitmap bitmap;
     private Color accentColor = Color.FromArgb(230, 35, 38);
+    private Color gaugeLowColor = Color.FromArgb(55, 190, 105);
+    private Color gaugeMediumColor = Color.FromArgb(235, 190, 45);
+    private Color gaugeHighColor = Color.FromArgb(230, 35, 38);
+    private int gaugeWarningThreshold = 60;
+    private int gaugeCriticalThreshold = 85;
+    private Color temperatureLowColor = Color.FromArgb(55, 190, 105);
+    private Color temperatureMediumColor = Color.FromArgb(235, 190, 45);
+    private Color temperatureHighColor = Color.FromArgb(230, 35, 38);
+    private int temperatureWarningThreshold = 70;
+    private int temperatureCriticalThreshold = 85;
+    private bool oneByOneShowsTemperature;
     private int updateIntervalMilliseconds = 250;
     private PanelTarget panelTarget = PanelTarget.Combined;
 
@@ -39,6 +63,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         bitmapHeight = widgetSize.ToSize().Height;
         bitmap = new Bitmap(bitmapWidth, bitmapHeight);
         LoadSettings();
+        lock (sharedGaugeSettingsLock)
+            sharedGaugeWidgets.Add(this);
         LoadSensorBindings();
         drawThread = new Thread(DrawLoop) { IsBackground = true };
         drawThread.Start();
@@ -58,6 +84,17 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public UserControl GetSettingsControl() => new HwinfoPanelSettings(this);
 
     public Color AccentColor => accentColor;
+    public Color GaugeLowColor => sharedGaugeLowColor;
+    public Color GaugeMediumColor => sharedGaugeMediumColor;
+    public Color GaugeHighColor => sharedGaugeHighColor;
+    public int GaugeWarningThreshold => sharedGaugeWarningThreshold;
+    public int GaugeCriticalThreshold => sharedGaugeCriticalThreshold;
+    public Color TemperatureLowColor => sharedTemperatureLowColor;
+    public Color TemperatureMediumColor => sharedTemperatureMediumColor;
+    public Color TemperatureHighColor => sharedTemperatureHighColor;
+    public int TemperatureWarningThreshold => sharedTemperatureWarningThreshold;
+    public int TemperatureCriticalThreshold => sharedTemperatureCriticalThreshold;
+    public bool OneByOneShowsTemperature => oneByOneShowsTemperature;
     public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
     public PanelTarget PanelTarget => panelTarget;
     public IReadOnlyList<SensorItem> AvailableSensors => (sensorSource as ManagerSensorSource)?.Sensors ?? Array.Empty<SensorItem>();
@@ -81,6 +118,73 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         accentColor = color;
         factory.WidgetManager?.StoreSetting(this, "AccentColor", ColorTranslator.ToHtml(color));
         RequestUpdate();
+    }
+
+    public void SetGaugeColors(Color low, Color medium, Color high)
+    {
+        gaugeLowColor = low;
+        gaugeMediumColor = medium;
+        gaugeHighColor = high;
+        sharedGaugeLowColor = low;
+        sharedGaugeMediumColor = medium;
+        sharedGaugeHighColor = high;
+        StoreSharedSetting("GaugeLowColor", ColorTranslator.ToHtml(low));
+        StoreSharedSetting("GaugeMediumColor", ColorTranslator.ToHtml(medium));
+        StoreSharedSetting("GaugeHighColor", ColorTranslator.ToHtml(high));
+        RequestUpdate();
+    }
+
+    public void SetGaugeThresholds(int warning, int critical)
+    {
+        gaugeWarningThreshold = Math.Max(1, Math.Min(98, warning));
+        gaugeCriticalThreshold = Math.Max(gaugeWarningThreshold + 1, Math.Min(99, critical));
+        sharedGaugeWarningThreshold = gaugeWarningThreshold;
+        sharedGaugeCriticalThreshold = gaugeCriticalThreshold;
+        StoreSharedSetting("GaugeWarningThreshold", gaugeWarningThreshold.ToString());
+        StoreSharedSetting("GaugeCriticalThreshold", gaugeCriticalThreshold.ToString());
+        RequestUpdate();
+    }
+
+    public void SetTemperatureColors(Color low, Color medium, Color high)
+    {
+        temperatureLowColor = low;
+        temperatureMediumColor = medium;
+        temperatureHighColor = high;
+        sharedTemperatureLowColor = low;
+        sharedTemperatureMediumColor = medium;
+        sharedTemperatureHighColor = high;
+        StoreSharedSetting("TemperatureLowColor", ColorTranslator.ToHtml(low));
+        StoreSharedSetting("TemperatureMediumColor", ColorTranslator.ToHtml(medium));
+        StoreSharedSetting("TemperatureHighColor", ColorTranslator.ToHtml(high));
+        RequestUpdate();
+    }
+
+    public void SetTemperatureThresholds(int warning, int critical)
+    {
+        temperatureWarningThreshold = Math.Max(1, Math.Min(149, warning));
+        temperatureCriticalThreshold = Math.Max(temperatureWarningThreshold + 1, Math.Min(150, critical));
+        sharedTemperatureWarningThreshold = temperatureWarningThreshold;
+        sharedTemperatureCriticalThreshold = temperatureCriticalThreshold;
+        StoreSharedSetting("TemperatureWarningThreshold", temperatureWarningThreshold.ToString());
+        StoreSharedSetting("TemperatureCriticalThreshold", temperatureCriticalThreshold.ToString());
+        RequestUpdate();
+    }
+
+    public void SetOneByOneShowsTemperature(bool showTemperature)
+    {
+        oneByOneShowsTemperature = showTemperature;
+        factory.WidgetManager?.StoreSetting(this, "OneByOneShowsTemperature", showTemperature.ToString());
+        RequestUpdate();
+    }
+
+    private void StoreSharedSetting(string key, string value)
+    {
+        HwinfoPanelWidget[] widgets;
+        lock (sharedGaugeSettingsLock)
+            widgets = new List<HwinfoPanelWidget>(sharedGaugeWidgets) { this }.ToArray();
+
+        foreach (HwinfoPanelWidget widget in widgets)
+            widget.factory.WidgetManager?.StoreSetting(widget, key, value);
     }
 
     public void SetUpdateInterval(int milliseconds)
@@ -119,6 +223,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         {
             bitmap.Dispose();
         }
+        lock (sharedGaugeSettingsLock)
+            sharedGaugeWidgets.Remove(this);
         stopEvent.Dispose();
     }
 
@@ -150,6 +256,71 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (factory.WidgetManager.LoadSetting(this, "AccentColor", out string savedColor))
             accentColor = ColorTranslator.FromHtml(savedColor);
 
+        lock (sharedGaugeSettingsLock)
+        {
+            if (!sharedGaugeSettingsLoaded)
+            {
+                if (factory.WidgetManager.LoadSetting(this, "GaugeLowColor", out string savedGaugeLowColor))
+                    gaugeLowColor = ColorTranslator.FromHtml(savedGaugeLowColor);
+
+                if (factory.WidgetManager.LoadSetting(this, "GaugeMediumColor", out string savedGaugeMediumColor))
+                    gaugeMediumColor = ColorTranslator.FromHtml(savedGaugeMediumColor);
+
+                if (factory.WidgetManager.LoadSetting(this, "GaugeHighColor", out string savedGaugeHighColor))
+                    gaugeHighColor = ColorTranslator.FromHtml(savedGaugeHighColor);
+
+                if (factory.WidgetManager.LoadSetting(this, "GaugeWarningThreshold", out string savedGaugeWarningThreshold) &&
+                    int.TryParse(savedGaugeWarningThreshold, out int warningThreshold))
+                    gaugeWarningThreshold = Math.Max(1, Math.Min(98, warningThreshold));
+
+                if (factory.WidgetManager.LoadSetting(this, "GaugeCriticalThreshold", out string savedGaugeCriticalThreshold) &&
+                    int.TryParse(savedGaugeCriticalThreshold, out int criticalThreshold))
+                    gaugeCriticalThreshold = Math.Max(gaugeWarningThreshold + 1, Math.Min(99, criticalThreshold));
+
+                if (factory.WidgetManager.LoadSetting(this, "TemperatureLowColor", out string savedTemperatureLowColor))
+                    temperatureLowColor = ColorTranslator.FromHtml(savedTemperatureLowColor);
+
+                if (factory.WidgetManager.LoadSetting(this, "TemperatureMediumColor", out string savedTemperatureMediumColor))
+                    temperatureMediumColor = ColorTranslator.FromHtml(savedTemperatureMediumColor);
+
+                if (factory.WidgetManager.LoadSetting(this, "TemperatureHighColor", out string savedTemperatureHighColor))
+                    temperatureHighColor = ColorTranslator.FromHtml(savedTemperatureHighColor);
+
+                if (factory.WidgetManager.LoadSetting(this, "TemperatureWarningThreshold", out string savedTemperatureWarningThreshold) &&
+                    int.TryParse(savedTemperatureWarningThreshold, out int temperatureWarning))
+                    temperatureWarningThreshold = Math.Max(1, Math.Min(149, temperatureWarning));
+
+                if (factory.WidgetManager.LoadSetting(this, "TemperatureCriticalThreshold", out string savedTemperatureCriticalThreshold) &&
+                    int.TryParse(savedTemperatureCriticalThreshold, out int temperatureCritical))
+                    temperatureCriticalThreshold = Math.Max(temperatureWarningThreshold + 1, Math.Min(150, temperatureCritical));
+
+                sharedGaugeLowColor = gaugeLowColor;
+                sharedGaugeMediumColor = gaugeMediumColor;
+                sharedGaugeHighColor = gaugeHighColor;
+                sharedGaugeWarningThreshold = gaugeWarningThreshold;
+                sharedGaugeCriticalThreshold = gaugeCriticalThreshold;
+                sharedTemperatureLowColor = temperatureLowColor;
+                sharedTemperatureMediumColor = temperatureMediumColor;
+                sharedTemperatureHighColor = temperatureHighColor;
+                sharedTemperatureWarningThreshold = temperatureWarningThreshold;
+                sharedTemperatureCriticalThreshold = temperatureCriticalThreshold;
+                sharedGaugeSettingsLoaded = true;
+            }
+            else
+            {
+                gaugeLowColor = sharedGaugeLowColor;
+                gaugeMediumColor = sharedGaugeMediumColor;
+                gaugeHighColor = sharedGaugeHighColor;
+                gaugeWarningThreshold = sharedGaugeWarningThreshold;
+                gaugeCriticalThreshold = sharedGaugeCriticalThreshold;
+                temperatureLowColor = sharedTemperatureLowColor;
+                temperatureMediumColor = sharedTemperatureMediumColor;
+                temperatureHighColor = sharedTemperatureHighColor;
+                temperatureWarningThreshold = sharedTemperatureWarningThreshold;
+                temperatureCriticalThreshold = sharedTemperatureCriticalThreshold;
+            }
+        }
+
         if (factory.WidgetManager.LoadSetting(this, "UpdateInterval", out string savedInterval) &&
             int.TryParse(savedInterval, out int interval))
             updateIntervalMilliseconds = interval < 100 ? 100 : interval > 2000 ? 2000 : interval;
@@ -157,6 +328,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (factory.WidgetManager.LoadSetting(this, "PanelTarget", out string savedTarget) &&
             Enum.TryParse(savedTarget, out PanelTarget target))
             panelTarget = target;
+
+        if (factory.WidgetManager.LoadSetting(this, "OneByOneShowsTemperature", out string savedOneByOneShowsTemperature) &&
+            bool.TryParse(savedOneByOneShowsTemperature, out bool showsTemperature))
+            oneByOneShowsTemperature = showsTemperature;
     }
 
     private void LoadSensorBindings()
@@ -204,8 +379,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                     int top = 72;
                     int largeWidth = ((int)ReferenceWidth - margin * 2 - gap) / 2;
                     int largeHeight = 220;
-                    DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
-                    DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
+                    DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, GetGaugeColor(data.CpuLoadPercent), titleFont, valueFont, detailFont);
+                    DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, GetGaugeColor(data.GpuLoadPercent), titleFont, valueFont, detailFont);
 
                     int bottomTop = top + largeHeight + gap;
                     int smallWidth = ((int)ReferenceWidth - margin * 2 - gap * 2) / 3;
@@ -332,26 +507,44 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         double power = gpu ? data.GpuPowerWatts : data.CpuPowerWatts;
         string model = gpu ? data.GpuName : data.CpuName;
         int centerY = height / 2;
+        if (WidgetSize.Height == 1 && WidgetSize.Width <= 2)
+            DrawCardFrame(graphics, new Rectangle(2, 2, width - 5, height - 5), accentColor);
+
         if (width < 300)
         {
-            int radius = Math.Max(24, Math.Min(width, height) / 4);
-            DrawGauge(graphics, new Point(width / 2, centerY + 12), radius, load, accentColor);
+            bool isOneByOne = WidgetSize.Width == 1 && WidgetSize.Height == 1;
+            bool isTwoByOne = WidgetSize.Width == 2 && WidgetSize.Height == 1;
+            int radius = isOneByOne || isTwoByOne ? 49 : Math.Max(24, Math.Min(width, height) / 4);
+            int gaugeWidth = isOneByOne || isTwoByOne ? 20 : 10;
+            Point gaugeCenter = new(width / 2, centerY + 12);
+            double gaugeValue = isOneByOne && oneByOneShowsTemperature ? temperature : load;
+            Color gaugeColor = isOneByOne && oneByOneShowsTemperature ? GetTemperatureGaugeColor(temperature) : GetGaugeColor(load);
+            DrawGauge(graphics, gaugeCenter, radius, gaugeValue, gaugeColor, gaugeWidth);
             using Brush compactWhite = new SolidBrush(Color.White);
-            graphics.DrawString($"{load:0}%", valueFont, compactWhite, width / 2 - 22, centerY - 8);
+            string gaugeText = isOneByOne && oneByOneShowsTemperature ? $"{temperature:0} °C" : $"{load:0}%";
+            string secondaryText = isOneByOne && oneByOneShowsTemperature ? $"{load:0}%" : $"{temperature:0} °C";
+            DrawCenteredText(graphics, gaugeText, valueFont, compactWhite, gaugeCenter.X, gaugeCenter.Y - valueFont.Height / 2f);
             graphics.DrawString(label, titleFont, compactWhite, 12, 10);
-            graphics.DrawString($"{temperature:0} °C", detailFont, compactWhite, 12, height - 24);
+            DrawCenteredText(graphics, secondaryText, detailFont, compactWhite, gaugeCenter.X, height - 24);
             return;
         }
 
-        int radiusDual = Math.Max(30, Math.Min(58, Math.Min(width / 5, height / 2 - 18)));
-        DrawGauge(graphics, new Point(width / 4, centerY + 8), radiusDual, load, accentColor);
-        DrawGauge(graphics, new Point(width * 3 / 4, centerY + 8), radiusDual, temperature, accentColor);
+        bool isTwoByOneLayout = WidgetSize.Width == 2 && WidgetSize.Height == 1;
+        int radiusDual = isTwoByOneLayout ? 49 : Math.Max(30, Math.Min(58, Math.Min(width / 5, height / 2 - 18)));
+        int gaugeWidthDual = isTwoByOneLayout ? 20 : 10;
+        Point loadCenter = new(width / 4, centerY + 8);
+        Point temperatureCenter = new(width * 3 / 4, centerY + 8);
+        DrawGauge(graphics, loadCenter, radiusDual, load, GetGaugeColor(load), gaugeWidthDual);
+        DrawGauge(graphics, temperatureCenter, radiusDual, temperature, GetTemperatureGaugeColor(temperature), gaugeWidthDual);
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(165, 175, 188));
-        graphics.DrawString(label, titleFont, white, 14, 10);
+        if (isTwoByOneLayout)
+            DrawCenteredText(graphics, label, titleFont, white, width / 2f, 10);
+        else
+            graphics.DrawString(label, titleFont, white, 14, 10);
         graphics.DrawString(model, detailFont, muted, 14, 34);
-        graphics.DrawString($"{load:0}%", valueFont, white, width / 4 - 22, centerY - 8);
-        graphics.DrawString($"{temperature:0} °C", detailFont, white, width * 3 / 4 - 30, centerY - 8);
+        DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
+        DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
         graphics.DrawString($"Clock {clock:0} MHz", detailFont, white, width / 2 - 64, height - 42);
         graphics.DrawString($"Power {power:0} W", detailFont, white, width / 2 - 58, height - 22);
     }
@@ -385,20 +578,22 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             Trimming = StringTrimming.EllipsisCharacter,
             FormatFlags = StringFormatFlags.NoWrap
         };
-        graphics.DrawString(model, detailFont, muted, new RectangleF(bounds.X + 10, bounds.Y + 27, bounds.Width - 20, 14), centeredModel);
+        bool modelBelowPower = WidgetSize.Width == 3 && WidgetSize.Height == 1;
+        if (!modelBelowPower)
+            graphics.DrawString(model, detailFont, muted, new RectangleF(bounds.X + 10, bounds.Y + 27, bounds.Width - 20, 14), centeredModel);
         int gaugeRadius = Math.Min(49, Math.Max(22, (int)Math.Round(bounds.Height / 3.0 * 1.44)));
         int gaugeWidth = Math.Min(20, Math.Max(10, (int)Math.Round(gaugeRadius * 20.0 / 49)));
         int gaugeCenterY = bounds.Y + bounds.Height / 2 + 2;
         Point loadCenter = new(bounds.X + gaugeRadius + 28, gaugeCenterY);
         Point temperatureCenter = new(bounds.Right - gaugeRadius - 20, gaugeCenterY);
-        DrawGauge(graphics, loadCenter, gaugeRadius, load, accentColor, gaugeWidth);
+        DrawGauge(graphics, loadCenter, gaugeRadius, load, GetGaugeColor(load), gaugeWidth);
         DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
         DrawCenteredText(graphics, "LOAD", detailFont, muted, loadCenter.X, loadCenter.Y + gaugeRadius - 7);
         int metricWidth = showTemperatureGauge ? 155 : 115;
         int metricX = showTemperatureGauge ? bounds.X + (bounds.Width - metricWidth) / 2 : bounds.Right - metricWidth - 6;
         if (showTemperatureGauge)
         {
-            DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, accentColor, gaugeWidth);
+            DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, GetTemperatureGaugeColor(temperature), gaugeWidth);
             DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
             DrawCenteredText(graphics, "TEMP", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + gaugeRadius - 7);
         }
@@ -406,6 +601,11 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             DrawCompactMetric(graphics, metricX, bounds.Y + 25, "TEMP", $"{temperature:0} °C", temperature / 100, metricWidth);
         DrawCompactMetric(graphics, metricX, bounds.Y + 51, "CLOCK", $"{clock:0} MHz", clock / 6000, metricWidth);
         DrawCompactMetric(graphics, metricX, bounds.Y + 77, "POWER", $"{power:0} W", power / 300, metricWidth);
+        if (modelBelowPower)
+        {
+            using Font modelFont = new("Segoe UI", 8);
+            graphics.DrawString(model, modelFont, muted, new RectangleF(bounds.X + bounds.Width / 2f - 4, bounds.Bottom - 17, bounds.Width / 2f - 6, 14), centeredModel);
+        }
     }
 
     private static string ShortenFiveByOneModel(string label, string model)
@@ -432,6 +632,24 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         double clamped = progress < 0 ? 0 : progress > 1 ? 1 : progress;
         graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 14, width, 4);
         graphics.FillRectangle(new SolidBrush(accentColor), x, y + 14, (float)(width * clamped), 4);
+    }
+
+    private Color GetGaugeColor(double value)
+    {
+        if (value >= sharedGaugeCriticalThreshold)
+            return sharedGaugeHighColor;
+        if (value >= sharedGaugeWarningThreshold)
+            return sharedGaugeMediumColor;
+        return sharedGaugeLowColor;
+    }
+
+    private Color GetTemperatureGaugeColor(double value)
+    {
+        if (value >= sharedTemperatureCriticalThreshold)
+            return sharedTemperatureHighColor;
+        if (value >= sharedTemperatureWarningThreshold)
+            return sharedTemperatureMediumColor;
+        return sharedTemperatureLowColor;
     }
 
     private static void DrawGauge(Graphics graphics, Point center, int radius, double value, Color accent, int strokeWidth = 10)

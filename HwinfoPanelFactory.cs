@@ -12,7 +12,7 @@ public sealed class HwinfoPanelFactory : IWidgetObject
     public string Name => "HWiNFO Sensor Panel";
     public string Author => "by ReXx09";
     public string Website => "";
-    public string Description => "Grafisches Sensorpanel mit HWiNFO-Daten.";
+    public string Description => "Grafisches HW-Info Sensorpanel für das WigiDash.";
     public Version Version => new(0, 1, 0);
     public SdkVersion TargetSdk => WidgetUtility.CurrentSdkVersion;
     public List<WidgetSize> SupportedSizes => new()
