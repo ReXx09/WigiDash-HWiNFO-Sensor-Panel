@@ -91,6 +91,7 @@ public sealed class ManagerSensorSource : ISensorSource
                 GpuClockMhz = ReadValue(SensorSlot.GpuClock),
                 GpuPowerWatts = ReadValue(SensorSlot.GpuPower),
                 GpuMemoryMegabytes = ReadValue(SensorSlot.GpuMemory),
+                GpuMemoryTotalMegabytes = 24576,
                 MemoryLoadPercent = ReadValue(SensorSlot.MemoryLoad),
                 MemoryUsedGigabytes = ReadMemoryUsedGigabytes(),
                 CpuFanRpm = (int)ReadValue(SensorSlot.CpuFan),

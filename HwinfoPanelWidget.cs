@@ -510,12 +510,12 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                     int smallWidth = ((int)ReferenceWidth - margin * 2 - gap * 2) / 3;
                     DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont);
                     DrawNetworkCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
-                    DrawLogoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), accentColor, titleFont, detailFont);
+                    DrawVramCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont);
 
                     if (WidgetSize.Width >= 5 && WidgetSize.Height >= 4)
                     {
                         int infoTop = bottomTop + 135 + gap;
-                        DrawInfoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), "RAM USED", $"{data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB", accentColor, titleFont, detailFont);
+                        DrawLogoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), accentColor, titleFont, detailFont);
                         DrawFanCard(graphics, new Rectangle(margin + smallWidth + gap, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
                         DrawFpsCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
                     }
@@ -576,14 +576,14 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         int metricsX = 15;
         if (isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Combined)
         {
-            Point loadCenter = new(bounds.X + 75, bounds.Y + 135);
-            Point temperatureCenter = new(bounds.X + 415, bounds.Y + 135);
+            Point loadCenter = new(bounds.X + 75, bounds.Y + 115);
+            Point temperatureCenter = new(bounds.X + 415, bounds.Y + 115);
             DrawGauge(graphics, loadCenter, gaugeRadius, load, GetGaugeColor(load), gaugeWidth);
             DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, GetTemperatureGaugeColor(temperature), gaugeWidth);
-            DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, bounds.Y + 112);
-            DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, bounds.Y + 148);
-            DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, bounds.Y + 112);
-            DrawCenteredText(graphics, "Temperature", detailFont, muted, temperatureCenter.X, bounds.Y + 148);
+            DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, bounds.Y + 92);
+            DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, bounds.Y + 153);
+            DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, bounds.Y + 92);
+            DrawCenteredText(graphics, "Temperature", detailFont, muted, temperatureCenter.X, bounds.Y + 153);
             DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 72, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 163);
             DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 111, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 163);
             DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 150, "Fan", $"{fanRpm:0} RPM", fanRpm / 3000, accentBrush, detailFont, white, 163);
@@ -595,10 +595,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         Color gaugeColor = showTemperatureGauge ? GetTemperatureGaugeColor(temperature) : GetGaugeColor(load);
         string gaugeText = showTemperatureGauge ? $"{temperature:0} °C" : $"{load:0}%";
         string gaugeLabel = showTemperatureGauge ? "Temperature" : "Load";
-        Point gaugeCenter = new(bounds.X + 100, bounds.Y + 135);
+        Point gaugeCenter = new(bounds.X + 100, bounds.Y + 115);
         DrawGauge(graphics, gaugeCenter, gaugeRadius, gaugeValue, gaugeColor, gaugeWidth);
-        DrawCenteredText(graphics, gaugeText, valueFont, white, gaugeCenter.X, bounds.Y + 112);
-        DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 148);
+        DrawCenteredText(graphics, gaugeText, valueFont, white, gaugeCenter.X, bounds.Y + 92);
+        DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 153);
         DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 65, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, 240);
         DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 90, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 248);
         DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 125, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 248);
@@ -648,6 +648,24 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString(label, titleFont, white, bounds.X + 14, bounds.Y + 14);
         graphics.DrawString(value, detailFont, muted, bounds.X + 14, bounds.Y + 54);
         graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 86, bounds.Width - 28, 4);
+    }
+
+    private static void DrawVramCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accent);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        double totalMegabytes = data.GpuMemoryTotalMegabytes > 0 ? data.GpuMemoryTotalMegabytes : 24576;
+        double usedGigabytes = data.GpuMemoryMegabytes / 1024;
+        double totalGigabytes = totalMegabytes / 1024;
+        double load = data.GpuMemoryMegabytes / totalMegabytes * 100;
+        graphics.DrawString("VRAM USED", titleFont, white, bounds.X + 14, bounds.Y + 12);
+        graphics.DrawString($"Load                         {load:0}%", detailFont, muted, bounds.X + 14, bounds.Y + 50);
+        graphics.DrawString($"Used  {usedGigabytes:0.0} GB / {totalGigabytes:0} GB", detailFont, muted, bounds.X + 14, bounds.Y + 76);
+        graphics.DrawString("GPU Memory", detailFont, muted, bounds.X + 14, bounds.Y + 102);
+        Point gaugeCenter = new(bounds.Right - 62, bounds.Y + 76);
+        DrawGauge(graphics, gaugeCenter, 42, load, accent, 16);
+        DrawCenteredText(graphics, $"{load:0}%", valueFont, white, gaugeCenter.X, gaugeCenter.Y - valueFont.Height / 2f);
     }
 
     private static void DrawFanCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)

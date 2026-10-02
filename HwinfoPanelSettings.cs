@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Collections.Generic;
 using System.Linq;
@@ -51,7 +52,7 @@ public sealed class HwinfoPanelSettings : UserControl
             targetSelector.Items.Add("GPU");
             targetSelector.SelectedIndex = (int)widget.PanelTarget;
         }
-        StackPanel sensorPanel = new();
+        StackPanel sensorPanel = new() { Margin = new Thickness(0, 8, 0, 0) };
         targetSelector.SelectionChanged += (_, _) =>
         {
             if (isFiveByFour)
@@ -293,8 +294,14 @@ public sealed class HwinfoPanelSettings : UserControl
         timeOptions.Children.Add(timeColorColumn);
         panel.Children.Add(timeOptions);
 
-        panel.Children.Add(new TextBlock { Text = "HWiNFO-Sensoren", Margin = new Thickness(0, 18, 0, 8), FontWeight = FontWeights.Bold });
-        panel.Children.Add(sensorPanel);
+        Expander sensorExpander = new()
+        {
+            Header = "HWiNFO-Sensoren",
+            IsExpanded = false,
+            Margin = new Thickness(0, 18, 0, 0),
+            Content = sensorPanel
+        };
+        panel.Children.Add(sensorExpander);
         RebuildRelevantSensorSelectors(sensorPanel);
 
         Button updateButton = new() { Content = "Jetzt aktualisieren", Margin = new Thickness(0, 18, 0, 0), Padding = new Thickness(10, 5, 10, 5) };
@@ -470,10 +477,16 @@ public sealed class HwinfoPanelSettings : UserControl
         return closestIndex;
     }
 
-    private void AddSensorSelector(StackPanel panel, string label, SensorSlot slot)
+    private void AddSensorSelector(Panel panel, string label, SensorSlot slot)
     {
-        panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 6, 0, 2) });
-        ComboBox selector = new() { Width = 280, Tag = slot, DisplayMemberPath = "Label", HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
+        panel.Children.Add(CreateSensorSelectorGroup(label, slot));
+    }
+
+    private StackPanel CreateSensorSelectorGroup(string label, SensorSlot slot)
+    {
+        StackPanel selectorGroup = new() { Margin = new Thickness(0, 0, 8, 8) };
+        selectorGroup.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 6, 0, 2) });
+        ComboBox selector = new() { Width = 220, Tag = slot, DisplayMemberPath = "Label", HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
         List<SensorOption> options = widget.AvailableSensors
             .Where(sensor => MatchesSlot(sensor, slot))
             .Select(sensor => new SensorOption(sensor))
@@ -492,7 +505,19 @@ public sealed class HwinfoPanelSettings : UserControl
             ? options.FirstOrDefault(option => option.Sensor.Guid == selectedGuid.Value)
             : null;
         selector.SelectionChanged += SensorSelector_SelectionChanged;
-        panel.Children.Add(selector);
+        selectorGroup.Children.Add(selector);
+        return selectorGroup;
+    }
+
+    private void AddSensorPair(Grid grid, int row, string leftLabel, SensorSlot leftSlot, string rightLabel, SensorSlot rightSlot)
+    {
+        StackPanel left = CreateSensorSelectorGroup(leftLabel, leftSlot);
+        StackPanel right = CreateSensorSelectorGroup(rightLabel, rightSlot);
+        Grid.SetColumn(right, 2);
+        Grid.SetRow(left, row);
+        Grid.SetRow(right, row);
+        grid.Children.Add(left);
+        grid.Children.Add(right);
     }
 
     private void AddRelevantSensorSelectors(StackPanel panel)
@@ -515,24 +540,41 @@ public sealed class HwinfoPanelSettings : UserControl
             return;
         }
 
-        AddSensorSelector(panel, "CPU-Last", SensorSlot.CpuLoad);
-        AddSensorSelector(panel, "CPU-Temperatur", SensorSlot.CpuTemperature);
-        AddSensorSelector(panel, "CPU-Clock", SensorSlot.CpuClock);
-        AddSensorSelector(panel, "CPU-Power", SensorSlot.CpuPower);
-        AddSensorSelector(panel, "GPU-Last", SensorSlot.GpuLoad);
-        AddSensorSelector(panel, "GPU-Temperatur", SensorSlot.GpuTemperature);
-        AddSensorSelector(panel, "GPU-Clock", SensorSlot.GpuClock);
-        AddSensorSelector(panel, "GPU-Power", SensorSlot.GpuPower);
+        panel.Children.Add(new TextBlock { Text = "CPU / GPU", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 4, 0, 4) });
+        Grid cpuGpuGrid = CreateSensorGrid();
+        AddSensorPair(cpuGpuGrid, 0, "CPU-Last", SensorSlot.CpuLoad, "GPU-Last", SensorSlot.GpuLoad);
+        AddSensorPair(cpuGpuGrid, 1, "CPU-Temperatur", SensorSlot.CpuTemperature, "GPU-Temperatur", SensorSlot.GpuTemperature);
+        AddSensorPair(cpuGpuGrid, 2, "CPU-Clock", SensorSlot.CpuClock, "GPU-Clock", SensorSlot.GpuClock);
+        AddSensorPair(cpuGpuGrid, 3, "CPU-Power", SensorSlot.CpuPower, "GPU-Power", SensorSlot.GpuPower);
+        if (!singleRow)
+            AddSensorPair(cpuGpuGrid, 4, "CPU-Lüfter", SensorSlot.CpuFan, "GPU-Lüfter", SensorSlot.GpuFan);
+        panel.Children.Add(cpuGpuGrid);
 
         if (singleRow)
             return;
 
-        AddSensorSelector(panel, "CPU-Lüfter", SensorSlot.CpuFan);
-        AddSensorSelector(panel, "GPU-Lüfter", SensorSlot.GpuFan);
-        AddSensorSelector(panel, "RAM-Last", SensorSlot.MemoryLoad);
-        AddSensorSelector(panel, "RAM-Used", SensorSlot.MemoryUsed);
-        AddSensorSelector(panel, "Netzwerk Upload", SensorSlot.NetworkUpload);
-        AddSensorSelector(panel, "Netzwerk Download", SensorSlot.NetworkDownload);
+        panel.Children.Add(new TextBlock { Text = "RAM", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 4) });
+        Grid memoryGrid = CreateSensorGrid();
+        AddSensorPair(memoryGrid, 0, "RAM-Last", SensorSlot.MemoryLoad, "RAM-Used", SensorSlot.MemoryUsed);
+        panel.Children.Add(memoryGrid);
+
+        Border networkSeparator = new() { BorderBrush = System.Windows.Media.Brushes.Gray, BorderThickness = new Thickness(0, 1, 0, 0), Margin = new Thickness(0, 10, 0, 6) };
+        panel.Children.Add(networkSeparator);
+        panel.Children.Add(new TextBlock { Text = "NETZWERK", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
+        Grid networkGrid = CreateSensorGrid();
+        AddSensorPair(networkGrid, 0, "Upload", SensorSlot.NetworkUpload, "Download", SensorSlot.NetworkDownload);
+        panel.Children.Add(networkGrid);
+    }
+
+    private static Grid CreateSensorGrid()
+    {
+        Grid grid = new();
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        for (int row = 0; row < 5; row++)
+            grid.RowDefinitions.Add(new RowDefinition());
+        return grid;
     }
 
     private void RebuildRelevantSensorSelectors(StackPanel panel)

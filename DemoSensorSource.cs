@@ -25,6 +25,7 @@ public sealed class DemoSensorSource : ISensorSource
             GpuClockMhz = 1920 + wave * 90,
             GpuPowerWatts = 238 + wave * 35,
             GpuMemoryMegabytes = 3307 + wave * 460,
+            GpuMemoryTotalMegabytes = 24576,
             MemoryLoadPercent = 41 + wave * 4,
             MemoryUsedGigabytes = 13.4 + wave * 0.5,
             MemoryTotalGigabytes = 32,

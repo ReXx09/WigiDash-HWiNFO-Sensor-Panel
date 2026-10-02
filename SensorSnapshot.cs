@@ -14,6 +14,7 @@ public sealed class SensorSnapshot
     public double GpuClockMhz { get; set; }
     public double GpuPowerWatts { get; set; }
     public double GpuMemoryMegabytes { get; set; }
+    public double GpuMemoryTotalMegabytes { get; set; }
     public double MemoryLoadPercent { get; set; }
     public double MemoryUsedGigabytes { get; set; }
     public double MemoryTotalGigabytes { get; set; }
