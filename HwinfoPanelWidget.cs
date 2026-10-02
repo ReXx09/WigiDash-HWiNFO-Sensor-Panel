@@ -564,12 +564,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         using Brush accentBrush = new SolidBrush(accent);
-        graphics.DrawString(label, titleFont, white, bounds.X + 18, bounds.Y + 14);
         model = ShortenFiveByOneModel(label, model);
-        graphics.DrawString(model, detailFont, muted, bounds.X + 18, bounds.Y + 43);
+        SizeF labelSize = graphics.MeasureString(label, titleFont);
+        SizeF modelSize = graphics.MeasureString(model, detailFont);
+        float headerStart = bounds.X + (bounds.Width - labelSize.Width - 8 - modelSize.Width) / 2f;
+        graphics.DrawString(label, titleFont, white, headerStart, bounds.Y + 14);
+        graphics.DrawString(model, detailFont, muted, headerStart + labelSize.Width + 8, bounds.Y + 18);
         bool isFiveByFour = WidgetSize.Width == 5 && WidgetSize.Height == 4;
         int gaugeRadius = isFiveByFour ? 60 : 58;
         int gaugeWidth = isFiveByFour ? 22 : 10;
+        int metricsX = 15;
         if (isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Combined)
         {
             Point loadCenter = new(bounds.X + 75, bounds.Y + 135);
@@ -580,9 +584,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, bounds.Y + 148);
             DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, bounds.Y + 112);
             DrawCenteredText(graphics, "Temperature", detailFont, muted, temperatureCenter.X, bounds.Y + 148);
-            DrawMetric(graphics, bounds.X + 145, bounds.Y + 82, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 135);
-            DrawMetric(graphics, bounds.X + 145, bounds.Y + 126, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 135);
-            DrawMetric(graphics, bounds.X + 145, bounds.Y + 170, "Fan", $"{fanRpm:0} RPM", fanRpm / 3000, accentBrush, detailFont, white, 135);
+            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 72, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 163);
+            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 111, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 163);
+            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 150, "Fan", $"{fanRpm:0} RPM", fanRpm / 3000, accentBrush, detailFont, white, 163);
             return;
         }
 
@@ -595,10 +599,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawGauge(graphics, gaugeCenter, gaugeRadius, gaugeValue, gaugeColor, gaugeWidth);
         DrawCenteredText(graphics, gaugeText, valueFont, white, gaugeCenter.X, bounds.Y + 112);
         DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 148);
-        DrawMetric(graphics, bounds.X + 200, bounds.Y + 65, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white);
-        DrawMetric(graphics, bounds.X + 200, bounds.Y + 105, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white);
-        DrawMetric(graphics, bounds.X + 200, bounds.Y + 145, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white);
-        DrawMetric(graphics, bounds.X + 200, bounds.Y + 185, "Fan", $"{fanRpm:0} RPM", fanRpm / 3000, accentBrush, detailFont, white);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 65, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, 240);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 90, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 248);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 125, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 248);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 160, "Fan", $"{fanRpm:0} RPM", fanRpm / 3000, accentBrush, detailFont, white, 248);
     }
 
     private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont)
