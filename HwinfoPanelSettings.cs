@@ -32,8 +32,10 @@ public sealed class HwinfoPanelSettings : UserControl
         StackPanel panel = new() { Margin = new Thickness(12) };
         panel.Children.Add(new TextBlock { Text = "HWiNFO Sensor Panel", FontSize = 18, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 14) });
 
-        panel.Children.Add(new TextBlock { Text = "Panelbereich", Margin = new Thickness(0, 0, 0, 4) });
-        ComboBox targetSelector = new() { Width = 180, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
+        StackPanel mainOptions = new() { Orientation = Orientation.Horizontal };
+        StackPanel targetColumn = new() { Width = 140, Margin = new Thickness(0, 0, 8, 0) };
+        targetColumn.Children.Add(new TextBlock { Text = "Panelbereich", Margin = new Thickness(0, 0, 0, 4) });
+        ComboBox targetSelector = new() { Width = 126, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
         bool isFiveByFour = widget.WidgetSize.Width == 5 && widget.WidgetSize.Height == 4;
         if (isFiveByFour)
         {
@@ -58,7 +60,8 @@ public sealed class HwinfoPanelSettings : UserControl
                 widget.SetPanelTarget((PanelTarget)targetSelector.SelectedIndex);
             RebuildRelevantSensorSelectors(sensorPanel);
         };
-        panel.Children.Add(targetSelector);
+        targetColumn.Children.Add(targetSelector);
+        mainOptions.Children.Add(targetColumn);
 
         if (widget.WidgetSize.Width == 1 && widget.WidgetSize.Height == 1)
         {
@@ -73,66 +76,110 @@ public sealed class HwinfoPanelSettings : UserControl
             panel.Children.Add(oneByOneTemperature);
         }
 
-        panel.Children.Add(new TextBlock { Text = "Akzentfarbe", Margin = new Thickness(0, 0, 0, 4) });
-        colorSelector = new ComboBox { Width = 180, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
+        StackPanel accentColumn = new() { Width = 140 };
+        accentColumn.Children.Add(new TextBlock { Text = "Akzentfarbe", Margin = new Thickness(0, 0, 0, 4) });
+        colorSelector = new ComboBox { Width = 126, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
         colorSelector.Items.Add("Rot");
         colorSelector.Items.Add("Blau");
         colorSelector.Items.Add("Grün");
         colorSelector.SelectedIndex = ColorIndex(widget.AccentColor);
         colorSelector.SelectionChanged += ColorSelector_SelectionChanged;
-        panel.Children.Add(colorSelector);
+        accentColumn.Children.Add(colorSelector);
+        mainOptions.Children.Add(accentColumn);
+        panel.Children.Add(mainOptions);
 
-        panel.Children.Add(new TextBlock { Text = "Gauge-Farbe bei niedriger Auslastung", Margin = new Thickness(0, 12, 0, 4) });
+        Grid gaugeOptions = new() { Margin = new Thickness(0, 12, 0, 0) };
+        gaugeOptions.ColumnDefinitions.Add(new ColumnDefinition());
+        gaugeOptions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+        gaugeOptions.ColumnDefinitions.Add(new ColumnDefinition());
+        gaugeOptions.RowDefinitions.Add(new RowDefinition());
+        gaugeOptions.RowDefinitions.Add(new RowDefinition());
+        gaugeOptions.RowDefinitions.Add(new RowDefinition());
+        gaugeOptions.RowDefinitions.Add(new RowDefinition());
+
+        TextBlock loadHeading = new() { Text = "Gaugefarbe nach Auslastung", FontWeight = FontWeights.Bold };
+        Grid.SetColumn(loadHeading, 0);
+        Grid.SetRow(loadHeading, 0);
+        gaugeOptions.Children.Add(loadHeading);
+        TextBlock temperatureHeading = new() { Text = "Gaugefarbe nach Temperatur", FontWeight = FontWeights.Bold };
+        Grid.SetColumn(temperatureHeading, 2);
+        Grid.SetRow(temperatureHeading, 0);
+        gaugeOptions.Children.Add(temperatureHeading);
+
+        StackPanel lowGaugeColumn = new();
+        lowGaugeColumn.Children.Add(new TextBlock { Text = "Niedrig", Margin = new Thickness(0, 0, 0, 4) });
         lowGaugeColorSelector = CreateGaugeColorSelector(widget.GaugeLowColor);
         lowGaugeColorSelector.SelectionChanged += GaugeColorSelector_SelectionChanged;
-        panel.Children.Add(lowGaugeColorSelector);
+        lowGaugeColumn.Children.Add(lowGaugeColorSelector);
+        Grid.SetColumn(lowGaugeColumn, 0);
+        Grid.SetRow(lowGaugeColumn, 1);
+        gaugeOptions.Children.Add(lowGaugeColumn);
 
-        panel.Children.Add(new TextBlock { Text = "Gauge-Farbe bei mittlerer Auslastung / Gelb ab (%)", Margin = new Thickness(0, 8, 0, 4) });
-        StackPanel mediumGaugeRow = new() { Orientation = Orientation.Horizontal };
-        mediumGaugeColorSelector = CreateGaugeColorSelector(widget.GaugeMediumColor);
-        mediumGaugeColorSelector.SelectionChanged += GaugeColorSelector_SelectionChanged;
-        mediumGaugeRow.Children.Add(mediumGaugeColorSelector);
-        warningThresholdInput = CreateThresholdInput(widget.GaugeWarningThreshold);
-        warningThresholdInput.LostFocus += ThresholdInput_LostFocus;
-        mediumGaugeRow.Children.Add(warningThresholdInput);
-        panel.Children.Add(mediumGaugeRow);
-
-        panel.Children.Add(new TextBlock { Text = "Gauge-Farbe bei hoher Auslastung / Rot ab (%)", Margin = new Thickness(0, 8, 0, 4) });
-        StackPanel highGaugeRow = new() { Orientation = Orientation.Horizontal };
-        highGaugeColorSelector = CreateGaugeColorSelector(widget.GaugeHighColor);
-        highGaugeColorSelector.SelectionChanged += GaugeColorSelector_SelectionChanged;
-        highGaugeRow.Children.Add(highGaugeColorSelector);
-        criticalThresholdInput = CreateThresholdInput(widget.GaugeCriticalThreshold);
-        criticalThresholdInput.LostFocus += ThresholdInput_LostFocus;
-        highGaugeRow.Children.Add(criticalThresholdInput);
-        panel.Children.Add(highGaugeRow);
-
-        panel.Children.Add(new TextBlock { Text = "Temperaturfarbe niedrig / Grün unter (°C)", Margin = new Thickness(0, 12, 0, 4) });
-        StackPanel lowTemperatureRow = new() { Orientation = Orientation.Horizontal };
+        StackPanel lowTemperatureColumn = new();
+        lowTemperatureColumn.Children.Add(new TextBlock { Text = "Niedrig", Margin = new Thickness(0, 0, 0, 4) });
         lowTemperatureColorSelector = CreateGaugeColorSelector(widget.TemperatureLowColor);
         lowTemperatureColorSelector.SelectionChanged += TemperatureColorSelector_SelectionChanged;
-        lowTemperatureRow.Children.Add(lowTemperatureColorSelector);
-        panel.Children.Add(lowTemperatureRow);
+        lowTemperatureColumn.Children.Add(lowTemperatureColorSelector);
+        Grid.SetColumn(lowTemperatureColumn, 2);
+        Grid.SetRow(lowTemperatureColumn, 1);
+        gaugeOptions.Children.Add(lowTemperatureColumn);
 
-        panel.Children.Add(new TextBlock { Text = "Temperaturfarbe mittel / Gelb ab (°C)", Margin = new Thickness(0, 8, 0, 4) });
-        StackPanel mediumTemperatureRow = new() { Orientation = Orientation.Horizontal };
+        StackPanel mediumGaugeColumn = new() { Margin = new Thickness(0, 10, 0, 0) };
+        mediumGaugeColumn.Children.Add(new TextBlock { Text = "Mittel", Margin = new Thickness(0, 0, 0, 4) });
+        mediumGaugeColorSelector = CreateGaugeColorSelector(widget.GaugeMediumColor);
+        mediumGaugeColorSelector.SelectionChanged += GaugeColorSelector_SelectionChanged;
+        warningThresholdInput = CreateThresholdInput(widget.GaugeWarningThreshold);
+        warningThresholdInput.LostFocus += ThresholdInput_LostFocus;
+        StackPanel mediumGaugeRow = new() { Orientation = Orientation.Horizontal };
+        mediumGaugeRow.Children.Add(mediumGaugeColorSelector);
+        mediumGaugeRow.Children.Add(warningThresholdInput);
+        mediumGaugeColumn.Children.Add(mediumGaugeRow);
+        Grid.SetColumn(mediumGaugeColumn, 0);
+        Grid.SetRow(mediumGaugeColumn, 2);
+        gaugeOptions.Children.Add(mediumGaugeColumn);
+
+        StackPanel mediumTemperatureColumn = new() { Margin = new Thickness(0, 10, 0, 0) };
+        mediumTemperatureColumn.Children.Add(new TextBlock { Text = "Mittel", Margin = new Thickness(0, 0, 0, 4) });
         mediumTemperatureColorSelector = CreateGaugeColorSelector(widget.TemperatureMediumColor);
         mediumTemperatureColorSelector.SelectionChanged += TemperatureColorSelector_SelectionChanged;
-        mediumTemperatureRow.Children.Add(mediumTemperatureColorSelector);
         temperatureWarningInput = CreateThresholdInput(widget.TemperatureWarningThreshold);
         temperatureWarningInput.LostFocus += TemperatureThresholdInput_LostFocus;
+        StackPanel mediumTemperatureRow = new() { Orientation = Orientation.Horizontal };
+        mediumTemperatureRow.Children.Add(mediumTemperatureColorSelector);
         mediumTemperatureRow.Children.Add(temperatureWarningInput);
-        panel.Children.Add(mediumTemperatureRow);
+        mediumTemperatureColumn.Children.Add(mediumTemperatureRow);
+        Grid.SetColumn(mediumTemperatureColumn, 2);
+        Grid.SetRow(mediumTemperatureColumn, 2);
+        gaugeOptions.Children.Add(mediumTemperatureColumn);
 
-        panel.Children.Add(new TextBlock { Text = "Temperaturfarbe hoch / Rot ab (°C)", Margin = new Thickness(0, 8, 0, 4) });
-        StackPanel highTemperatureRow = new() { Orientation = Orientation.Horizontal };
+        StackPanel highGaugeColumn = new() { Margin = new Thickness(0, 10, 0, 0) };
+        highGaugeColumn.Children.Add(new TextBlock { Text = "Hoch", Margin = new Thickness(0, 0, 0, 4) });
+        highGaugeColorSelector = CreateGaugeColorSelector(widget.GaugeHighColor);
+        highGaugeColorSelector.SelectionChanged += GaugeColorSelector_SelectionChanged;
+        criticalThresholdInput = CreateThresholdInput(widget.GaugeCriticalThreshold);
+        criticalThresholdInput.LostFocus += ThresholdInput_LostFocus;
+        StackPanel highGaugeRow = new() { Orientation = Orientation.Horizontal };
+        highGaugeRow.Children.Add(highGaugeColorSelector);
+        highGaugeRow.Children.Add(criticalThresholdInput);
+        highGaugeColumn.Children.Add(highGaugeRow);
+        Grid.SetColumn(highGaugeColumn, 0);
+        Grid.SetRow(highGaugeColumn, 3);
+        gaugeOptions.Children.Add(highGaugeColumn);
+
+        StackPanel highTemperatureColumn = new() { Margin = new Thickness(0, 10, 0, 0) };
+        highTemperatureColumn.Children.Add(new TextBlock { Text = "Hoch", Margin = new Thickness(0, 0, 0, 4) });
         highTemperatureColorSelector = CreateGaugeColorSelector(widget.TemperatureHighColor);
         highTemperatureColorSelector.SelectionChanged += TemperatureColorSelector_SelectionChanged;
-        highTemperatureRow.Children.Add(highTemperatureColorSelector);
         temperatureCriticalInput = CreateThresholdInput(widget.TemperatureCriticalThreshold);
         temperatureCriticalInput.LostFocus += TemperatureThresholdInput_LostFocus;
+        StackPanel highTemperatureRow = new() { Orientation = Orientation.Horizontal };
+        highTemperatureRow.Children.Add(highTemperatureColorSelector);
         highTemperatureRow.Children.Add(temperatureCriticalInput);
-        panel.Children.Add(highTemperatureRow);
+        highTemperatureColumn.Children.Add(highTemperatureRow);
+        Grid.SetColumn(highTemperatureColumn, 2);
+        Grid.SetRow(highTemperatureColumn, 3);
+        gaugeOptions.Children.Add(highTemperatureColumn);
+        panel.Children.Add(gaugeOptions);
 
         panel.Children.Add(new TextBlock { Text = "Aktualisierungsintervall", Margin = new Thickness(0, 16, 0, 4) });
         intervalSlider = new Slider { Minimum = 100, Maximum = 2000, TickFrequency = 100, IsSnapToTickEnabled = true, Value = widget.UpdateIntervalMilliseconds };
@@ -246,7 +293,7 @@ public sealed class HwinfoPanelSettings : UserControl
 
     private static ComboBox CreateGaugeColorSelector(DrawingColor color)
     {
-        ComboBox selector = new() { Width = 180, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
+        ComboBox selector = new() { Width = 126, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
         selector.Items.Add("Grün");
         selector.Items.Add("Gelb");
         selector.Items.Add("Rot");
