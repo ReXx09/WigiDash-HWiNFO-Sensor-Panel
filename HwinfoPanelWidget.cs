@@ -53,6 +53,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private FiveByFourGaugeMode fiveByFourGaugeMode = FiveByFourGaugeMode.Load;
     private int updateIntervalMilliseconds = 250;
     private PanelTarget panelTarget = PanelTarget.Combined;
+    private string timeZoneId = TimeZoneInfo.Local.Id;
 
     public HwinfoPanelWidget(HwinfoPanelFactory parent, WidgetSize widgetSize, Guid instanceGuid, ISensorSource source)
     {
@@ -99,6 +100,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public FiveByFourGaugeMode FiveByFourGaugeMode => fiveByFourGaugeMode;
     public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
     public PanelTarget PanelTarget => panelTarget;
+    public string TimeZoneId => timeZoneId;
     public IReadOnlyList<SensorItem> AvailableSensors => (sensorSource as ManagerSensorSource)?.Sensors ?? Array.Empty<SensorItem>();
 
     public Guid? GetBoundSensor(SensorSlot slot)
@@ -208,6 +210,20 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         panelTarget = target;
         factory.WidgetManager?.StoreSetting(this, "PanelTarget", target.ToString());
         RequestUpdate();
+    }
+
+    public void SetTimeZone(string id)
+    {
+        try
+        {
+            TimeZoneInfo.FindSystemTimeZoneById(id);
+            timeZoneId = id;
+            factory.WidgetManager?.StoreSetting(this, "TimeZoneId", id);
+            RequestUpdate();
+        }
+        catch (TimeZoneNotFoundException)
+        {
+        }
     }
 
     public void UpdateNow()
@@ -338,6 +354,18 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             Enum.TryParse(savedTarget, out PanelTarget target))
             panelTarget = target;
 
+        if (factory.WidgetManager.LoadSetting(this, "TimeZoneId", out string savedTimeZoneId))
+        {
+            try
+            {
+                TimeZoneInfo.FindSystemTimeZoneById(savedTimeZoneId);
+                timeZoneId = savedTimeZoneId;
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+        }
+
         if (factory.WidgetManager.LoadSetting(this, "OneByOneShowsTemperature", out string savedOneByOneShowsTemperature) &&
             bool.TryParse(savedOneByOneShowsTemperature, out bool showsTemperature))
             oneByOneShowsTemperature = showsTemperature;
@@ -400,16 +428,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
                     int bottomTop = top + largeHeight + gap;
                     int smallWidth = ((int)ReferenceWidth - margin * 2 - gap * 2) / 3;
-                    DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
+                    DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont);
                     DrawFpsCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
                     DrawLogoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), accentColor, titleFont, detailFont);
 
                     if (WidgetSize.Width >= 5 && WidgetSize.Height >= 4)
                     {
                         int infoTop = bottomTop + 135 + gap;
-                        DrawInfoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), "CPU FAN", $"{data.CpuFanRpm:0} RPM", accentColor, titleFont, detailFont);
+                        DrawInfoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), "RAM USED", $"{data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB", accentColor, titleFont, detailFont);
                         DrawInfoCard(graphics, new Rectangle(margin + smallWidth + gap, infoTop, smallWidth, 120), "GPU FAN", $"{data.GpuFanRpm:0} RPM", accentColor, titleFont, detailFont);
-                        DrawInfoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), "RAM USED", $"{data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB", accentColor, titleFont, detailFont);
+                        DrawInfoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), "CPU FAN", $"{data.CpuFanRpm:0} RPM", accentColor, titleFont, detailFont);
                     }
                 }
             }
@@ -435,14 +463,18 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         copy.Dispose();
     }
 
-    private static void DrawHeader(Graphics graphics, Font titleFont, Font detailFont, SensorSnapshot data, Color accent)
+    private void DrawHeader(Graphics graphics, Font titleFont, Font detailFont, SensorSnapshot data, Color accent)
     {
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(170, 178, 190));
-        graphics.DrawString($"CPU   {data.CpuFanRpm} RPM     GPU   {data.GpuFanRpm} RPM", detailFont, muted, 18, 16);
-        graphics.DrawString("HWiNFO SENSOR PANEL", titleFont, white, 18, 37);
-        graphics.DrawString(DateTime.Now.ToString("HH:mm:ss"), detailFont, muted, 760, 22);
-        graphics.DrawString("LIVE", detailFont, new SolidBrush(accent), 760, 46);
+        using Pen border = new(accent, 2);
+        graphics.DrawRectangle(border, 8, 8, (int)ReferenceWidth - 16, 54);
+        graphics.DrawString("HWiNFO SENSOR PANEL", titleFont, white, 18, 25);
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        string currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone).ToString("HH:mm:ss");
+        SizeF timeSize = graphics.MeasureString(currentTime, titleFont);
+        graphics.DrawString(currentTime, titleFont, muted, (ReferenceWidth - timeSize.Width) / 2, 25);
+        graphics.DrawString("LIVE", detailFont, new SolidBrush(accent), ReferenceWidth - 58, 28);
     }
 
     private void DrawCoreCard(Graphics graphics, Rectangle bounds, string label, string model, double load, double temperature, double clock, double power, Color accent, Font titleFont, Font valueFont, Font detailFont)
@@ -460,15 +492,15 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Combined)
         {
             Point loadCenter = new(bounds.X + 75, bounds.Y + 135);
-            Point temperatureCenter = new(bounds.X + 365, bounds.Y + 135);
+            Point temperatureCenter = new(bounds.X + 378, bounds.Y + 135);
             DrawGauge(graphics, loadCenter, gaugeRadius, load, GetGaugeColor(load), gaugeWidth);
             DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, GetTemperatureGaugeColor(temperature), gaugeWidth);
             DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, bounds.Y + 112);
             DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, bounds.Y + 148);
             DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, bounds.Y + 112);
             DrawCenteredText(graphics, "Temperature", detailFont, muted, temperatureCenter.X, bounds.Y + 148);
-            DrawMetric(graphics, bounds.X + 155, bounds.Y + 102, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 145);
-            DrawMetric(graphics, bounds.X + 155, bounds.Y + 151, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 145);
+            DrawMetric(graphics, bounds.X + 145, bounds.Y + 102, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 135);
+            DrawMetric(graphics, bounds.X + 145, bounds.Y + 151, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 135);
             return;
         }
 
@@ -486,7 +518,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawMetric(graphics, bounds.X + 200, bounds.Y + 160, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white);
     }
 
-    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
+    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
@@ -495,6 +527,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString($"Load                         {data.MemoryLoadPercent:0}%", detailFont, muted, bounds.X + 14, bounds.Y + 50);
         graphics.DrawString($"Used  {data.MemoryUsedGigabytes:0.0} GB / {data.MemoryTotalGigabytes:0} GB", detailFont, muted, bounds.X + 14, bounds.Y + 76);
         graphics.DrawString("38-38-38-77 CR2", detailFont, muted, bounds.X + 14, bounds.Y + 102);
+        Point gaugeCenter = new(bounds.Right - 62, bounds.Y + 76);
+        DrawGauge(graphics, gaugeCenter, 42, data.MemoryLoadPercent, accent, 16);
+        DrawCenteredText(graphics, $"{data.MemoryLoadPercent:0}%", valueFont, white, gaugeCenter.X, gaugeCenter.Y - valueFont.Height / 2f);
     }
 
     private static void DrawFpsCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)

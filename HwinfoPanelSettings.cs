@@ -141,6 +141,38 @@ public sealed class HwinfoPanelSettings : UserControl
         intervalValue = new TextBlock { Margin = new Thickness(0, 4, 0, 0) };
         panel.Children.Add(intervalValue);
 
+        panel.Children.Add(new TextBlock { Text = "Zeitzone", Margin = new Thickness(0, 14, 0, 4) });
+        Dictionary<string, string> timeZoneOptions = new()
+        {
+            ["Lokale Zeit"] = TimeZoneInfo.Local.Id,
+            ["UTC"] = "UTC",
+            ["Deutschland / Berlin"] = "W. Europe Standard Time",
+            ["Großbritannien / London"] = "GMT Standard Time",
+            ["USA / New York"] = "Eastern Standard Time",
+            ["USA / Chicago"] = "Central Standard Time",
+            ["USA / Denver"] = "Mountain Standard Time",
+            ["USA / Los Angeles"] = "Pacific Standard Time",
+            ["Japan / Tokio"] = "Tokyo Standard Time",
+            ["Singapur"] = "Singapore Standard Time",
+            ["Australien / Sydney"] = "AUS Eastern Standard Time"
+        };
+        ComboBox timeZoneSelector = new()
+        {
+            Width = 240,
+            ItemsSource = timeZoneOptions,
+            DisplayMemberPath = "Key",
+            SelectedValuePath = "Value",
+            SelectedValue = widget.TimeZoneId,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        timeZoneSelector.SelectionChanged += (_, _) =>
+        {
+            if (timeZoneSelector.SelectedValue is string selectedTimeZone)
+                widget.SetTimeZone(selectedTimeZone);
+        };
+        panel.Children.Add(timeZoneSelector);
+
         panel.Children.Add(new TextBlock { Text = "HWiNFO-Sensoren", Margin = new Thickness(0, 18, 0, 8), FontWeight = FontWeights.Bold });
         panel.Children.Add(sensorPanel);
         RebuildRelevantSensorSelectors(sensorPanel);
