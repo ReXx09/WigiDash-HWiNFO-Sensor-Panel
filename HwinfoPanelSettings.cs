@@ -106,7 +106,7 @@ public sealed class HwinfoPanelSettings : UserControl
         Grid.SetRow(temperatureHeading, 0);
         gaugeOptions.Children.Add(temperatureHeading);
 
-        StackPanel lowGaugeColumn = new();
+        StackPanel lowGaugeColumn = new() { Margin = new Thickness(0, 8, 0, 0) };
         lowGaugeColumn.Children.Add(new TextBlock { Text = "Niedrig", Margin = new Thickness(0, 0, 0, 4) });
         lowGaugeColorSelector = CreateGaugeColorSelector(widget.GaugeLowColor);
         lowGaugeColorSelector.SelectionChanged += GaugeColorSelector_SelectionChanged;
@@ -115,7 +115,7 @@ public sealed class HwinfoPanelSettings : UserControl
         Grid.SetRow(lowGaugeColumn, 1);
         gaugeOptions.Children.Add(lowGaugeColumn);
 
-        StackPanel lowTemperatureColumn = new();
+        StackPanel lowTemperatureColumn = new() { Margin = new Thickness(0, 8, 0, 0) };
         lowTemperatureColumn.Children.Add(new TextBlock { Text = "Niedrig", Margin = new Thickness(0, 0, 0, 4) });
         lowTemperatureColorSelector = CreateGaugeColorSelector(widget.TemperatureLowColor);
         lowTemperatureColorSelector.SelectionChanged += TemperatureColorSelector_SelectionChanged;
@@ -219,6 +219,22 @@ public sealed class HwinfoPanelSettings : UserControl
                 widget.SetTimeZone(selectedTimeZone);
         };
         panel.Children.Add(timeZoneSelector);
+
+        panel.Children.Add(new TextBlock { Text = "Header-Touchaktion", Margin = new Thickness(0, 12, 0, 4) });
+        ComboBox headerActionSelector = new()
+        {
+            Width = 180,
+            ItemsSource = new[] { "Keine Aktion", "Anzeige umschalten", "Jetzt aktualisieren" },
+            SelectedIndex = (int)widget.HeaderTouchAction,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        headerActionSelector.SelectionChanged += (_, _) =>
+        {
+            if (headerActionSelector.SelectedIndex >= 0)
+                widget.SetHeaderTouchAction((HeaderTouchAction)headerActionSelector.SelectedIndex);
+        };
+        panel.Children.Add(headerActionSelector);
 
         panel.Children.Add(new TextBlock { Text = "HWiNFO-Sensoren", Margin = new Thickness(0, 18, 0, 8), FontWeight = FontWeights.Bold });
         panel.Children.Add(sensorPanel);

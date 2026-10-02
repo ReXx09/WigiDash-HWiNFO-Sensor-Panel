@@ -54,6 +54,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private int updateIntervalMilliseconds = 250;
     private PanelTarget panelTarget = PanelTarget.Combined;
     private string timeZoneId = TimeZoneInfo.Local.Id;
+    private HeaderTouchAction headerTouchAction;
 
     public HwinfoPanelWidget(HwinfoPanelFactory parent, WidgetSize widgetSize, Guid instanceGuid, ISensorSource source)
     {
@@ -81,6 +82,18 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
     public void ClickEvent(ClickType clickType, int x, int y)
     {
+        if (headerTouchAction == HeaderTouchAction.None || WidgetSize.Width <= 2 || WidgetSize.Height <= 1)
+            return;
+
+        float referenceX = x * ReferenceWidth / bitmapWidth;
+        float referenceY = y * ReferenceHeight / bitmapHeight;
+        if (referenceX < 8 || referenceX > ReferenceWidth - 8 || referenceY < 8 || referenceY > 62)
+            return;
+
+        if (headerTouchAction == HeaderTouchAction.Refresh)
+            UpdateNow();
+        else if (headerTouchAction == HeaderTouchAction.ToggleDisplay)
+            ToggleDisplayMode();
     }
 
     public UserControl GetSettingsControl() => new HwinfoPanelSettings(this);
@@ -101,6 +114,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
     public PanelTarget PanelTarget => panelTarget;
     public string TimeZoneId => timeZoneId;
+    public HeaderTouchAction HeaderTouchAction => headerTouchAction;
     public IReadOnlyList<SensorItem> AvailableSensors => (sensorSource as ManagerSensorSource)?.Sensors ?? Array.Empty<SensorItem>();
 
     public Guid? GetBoundSensor(SensorSlot slot)
@@ -224,6 +238,20 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         catch (TimeZoneNotFoundException)
         {
         }
+    }
+
+    public void SetHeaderTouchAction(HeaderTouchAction action)
+    {
+        headerTouchAction = action;
+        factory.WidgetManager?.StoreSetting(this, "HeaderTouchAction", action.ToString());
+    }
+
+    private void ToggleDisplayMode()
+    {
+        if (WidgetSize.Width == 5 && WidgetSize.Height == 4)
+            SetFiveByFourGaugeMode((FiveByFourGaugeMode)(((int)fiveByFourGaugeMode + 1) % 3));
+        else
+            SetPanelTarget((PanelTarget)(((int)panelTarget + 1) % 3));
     }
 
     public void UpdateNow()
@@ -353,6 +381,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (factory.WidgetManager.LoadSetting(this, "PanelTarget", out string savedTarget) &&
             Enum.TryParse(savedTarget, out PanelTarget target))
             panelTarget = target;
+
+        if (factory.WidgetManager.LoadSetting(this, "HeaderTouchAction", out string savedHeaderTouchAction) &&
+            Enum.TryParse(savedHeaderTouchAction, out HeaderTouchAction headerAction))
+            headerTouchAction = headerAction;
 
         if (factory.WidgetManager.LoadSetting(this, "TimeZoneId", out string savedTimeZoneId))
         {
@@ -492,7 +524,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Combined)
         {
             Point loadCenter = new(bounds.X + 75, bounds.Y + 135);
-            Point temperatureCenter = new(bounds.X + 378, bounds.Y + 135);
+            Point temperatureCenter = new(bounds.X + 415, bounds.Y + 135);
             DrawGauge(graphics, loadCenter, gaugeRadius, load, GetGaugeColor(load), gaugeWidth);
             DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, GetTemperatureGaugeColor(temperature), gaugeWidth);
             DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, bounds.Y + 112);

@@ -14,6 +14,13 @@ public enum FiveByFourGaugeMode
     Combined
 }
 
+public enum HeaderTouchAction
+{
+    None,
+    ToggleDisplay,
+    Refresh
+}
+
 public enum SensorSlot
 {
     CpuLoad,
