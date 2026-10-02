@@ -7,6 +7,13 @@ public enum PanelTarget
     Gpu
 }
 
+public enum FiveByFourGaugeMode
+{
+    Load,
+    Temperature,
+    Combined
+}
+
 public enum SensorSlot
 {
     CpuLoad,

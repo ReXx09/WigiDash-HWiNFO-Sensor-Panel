@@ -50,6 +50,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private int temperatureWarningThreshold = 70;
     private int temperatureCriticalThreshold = 85;
     private bool oneByOneShowsTemperature;
+    private FiveByFourGaugeMode fiveByFourGaugeMode = FiveByFourGaugeMode.Load;
     private int updateIntervalMilliseconds = 250;
     private PanelTarget panelTarget = PanelTarget.Combined;
 
@@ -95,6 +96,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public int TemperatureWarningThreshold => sharedTemperatureWarningThreshold;
     public int TemperatureCriticalThreshold => sharedTemperatureCriticalThreshold;
     public bool OneByOneShowsTemperature => oneByOneShowsTemperature;
+    public FiveByFourGaugeMode FiveByFourGaugeMode => fiveByFourGaugeMode;
     public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
     public PanelTarget PanelTarget => panelTarget;
     public IReadOnlyList<SensorItem> AvailableSensors => (sensorSource as ManagerSensorSource)?.Sensors ?? Array.Empty<SensorItem>();
@@ -174,6 +176,13 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     {
         oneByOneShowsTemperature = showTemperature;
         factory.WidgetManager?.StoreSetting(this, "OneByOneShowsTemperature", showTemperature.ToString());
+        RequestUpdate();
+    }
+
+    public void SetFiveByFourGaugeMode(FiveByFourGaugeMode mode)
+    {
+        fiveByFourGaugeMode = mode;
+        factory.WidgetManager?.StoreSetting(this, "FiveByFourGaugeMode", mode.ToString());
         RequestUpdate();
     }
 
@@ -332,6 +341,13 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (factory.WidgetManager.LoadSetting(this, "OneByOneShowsTemperature", out string savedOneByOneShowsTemperature) &&
             bool.TryParse(savedOneByOneShowsTemperature, out bool showsTemperature))
             oneByOneShowsTemperature = showsTemperature;
+
+        if (factory.WidgetManager.LoadSetting(this, "FiveByFourGaugeMode", out string savedFiveByFourGaugeMode) &&
+            Enum.TryParse(savedFiveByFourGaugeMode, out FiveByFourGaugeMode gaugeMode))
+            fiveByFourGaugeMode = gaugeMode;
+        else if (factory.WidgetManager.LoadSetting(this, "FiveByFourShowsTemperature", out string savedFiveByFourShowsTemperature) &&
+                 bool.TryParse(savedFiveByFourShowsTemperature, out bool fiveByFourShowsTemperatureValue))
+            fiveByFourGaugeMode = fiveByFourShowsTemperatureValue ? FiveByFourGaugeMode.Temperature : FiveByFourGaugeMode.Load;
     }
 
     private void LoadSensorBindings()
@@ -379,8 +395,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                     int top = 72;
                     int largeWidth = ((int)ReferenceWidth - margin * 2 - gap) / 2;
                     int largeHeight = 220;
-                    DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, GetGaugeColor(data.CpuLoadPercent), titleFont, valueFont, detailFont);
-                    DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, GetGaugeColor(data.GpuLoadPercent), titleFont, valueFont, detailFont);
+                    DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
+                    DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, accentColor, titleFont, valueFont, detailFont);
 
                     int bottomTop = top + largeHeight + gap;
                     int smallWidth = ((int)ReferenceWidth - margin * 2 - gap * 2) / 3;
@@ -429,17 +445,42 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString("LIVE", detailFont, new SolidBrush(accent), 760, 46);
     }
 
-    private static void DrawCoreCard(Graphics graphics, Rectangle bounds, string label, string model, double load, double temperature, double clock, double power, Color accent, Font titleFont, Font valueFont, Font detailFont)
+    private void DrawCoreCard(Graphics graphics, Rectangle bounds, string label, string model, double load, double temperature, double clock, double power, Color accent, Font titleFont, Font valueFont, Font detailFont)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         using Brush accentBrush = new SolidBrush(accent);
         graphics.DrawString(label, titleFont, white, bounds.X + 18, bounds.Y + 14);
+        model = ShortenFiveByOneModel(label, model);
         graphics.DrawString(model, detailFont, muted, bounds.X + 18, bounds.Y + 43);
-        DrawGauge(graphics, new Point(bounds.X + 100, bounds.Y + 135), 58, load, accent);
-        graphics.DrawString($"{load:0}%", valueFont, white, bounds.X + 72, bounds.Y + 112);
-        graphics.DrawString("Load", detailFont, muted, bounds.X + 87, bounds.Y + 148);
+        bool isFiveByFour = WidgetSize.Width == 5 && WidgetSize.Height == 4;
+        int gaugeRadius = isFiveByFour ? 60 : 58;
+        int gaugeWidth = isFiveByFour ? 22 : 10;
+        if (isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Combined)
+        {
+            Point loadCenter = new(bounds.X + 75, bounds.Y + 135);
+            Point temperatureCenter = new(bounds.X + 365, bounds.Y + 135);
+            DrawGauge(graphics, loadCenter, gaugeRadius, load, GetGaugeColor(load), gaugeWidth);
+            DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, GetTemperatureGaugeColor(temperature), gaugeWidth);
+            DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, bounds.Y + 112);
+            DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, bounds.Y + 148);
+            DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, bounds.Y + 112);
+            DrawCenteredText(graphics, "Temperature", detailFont, muted, temperatureCenter.X, bounds.Y + 148);
+            DrawMetric(graphics, bounds.X + 155, bounds.Y + 102, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 145);
+            DrawMetric(graphics, bounds.X + 155, bounds.Y + 151, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 145);
+            return;
+        }
+
+        bool showTemperatureGauge = isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Temperature;
+        double gaugeValue = showTemperatureGauge ? temperature : load;
+        Color gaugeColor = showTemperatureGauge ? GetTemperatureGaugeColor(temperature) : GetGaugeColor(load);
+        string gaugeText = showTemperatureGauge ? $"{temperature:0} °C" : $"{load:0}%";
+        string gaugeLabel = showTemperatureGauge ? "Temperature" : "Load";
+        Point gaugeCenter = new(bounds.X + 100, bounds.Y + 135);
+        DrawGauge(graphics, gaugeCenter, gaugeRadius, gaugeValue, gaugeColor, gaugeWidth);
+        DrawCenteredText(graphics, gaugeText, valueFont, white, gaugeCenter.X, bounds.Y + 112);
+        DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 148);
         DrawMetric(graphics, bounds.X + 200, bounds.Y + 82, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white);
         DrawMetric(graphics, bounds.X + 200, bounds.Y + 121, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white);
         DrawMetric(graphics, bounds.X + 200, bounds.Y + 160, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white);
@@ -487,14 +528,14 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 86, bounds.Width - 28, 4);
     }
 
-    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white)
+    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white, int width = 220)
     {
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         graphics.DrawString(label, detailFont, muted, x, y);
         graphics.DrawString(value, detailFont, white, x + 108, y);
         double clampedProgress = progress < 0 ? 0 : progress > 1 ? 1 : progress;
-        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 22, 220, 4);
-        graphics.FillRectangle(accent, x, y + 22, (float)(220 * clampedProgress), 4);
+        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 22, width, 4);
+        graphics.FillRectangle(accent, x, y + 22, (float)(width * clampedProgress), 4);
     }
 
     private void DrawCompactPanel(Graphics graphics, int width, int height, SensorSnapshot data, Font titleFont, Font valueFont, Font detailFont)
@@ -506,6 +547,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         double clock = gpu ? data.GpuClockMhz : data.CpuClockMhz;
         double power = gpu ? data.GpuPowerWatts : data.CpuPowerWatts;
         string model = gpu ? data.GpuName : data.CpuName;
+        model = ShortenFiveByOneModel(label, model);
         int centerY = height / 2;
         if (WidgetSize.Height == 1 && WidgetSize.Width <= 2)
             DrawCardFrame(graphics, new Rectangle(2, 2, width - 5, height - 5), accentColor);

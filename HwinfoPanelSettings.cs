@@ -34,14 +34,28 @@ public sealed class HwinfoPanelSettings : UserControl
 
         panel.Children.Add(new TextBlock { Text = "Panelbereich", Margin = new Thickness(0, 0, 0, 4) });
         ComboBox targetSelector = new() { Width = 180, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
-        targetSelector.Items.Add("Kombiniert");
-        targetSelector.Items.Add("CPU");
-        targetSelector.Items.Add("GPU");
-        targetSelector.SelectedIndex = (int)widget.PanelTarget;
+        bool isFiveByFour = widget.WidgetSize.Width == 5 && widget.WidgetSize.Height == 4;
+        if (isFiveByFour)
+        {
+            targetSelector.Items.Add("Last");
+            targetSelector.Items.Add("Temperatur");
+            targetSelector.Items.Add("Kombiniert");
+            targetSelector.SelectedIndex = (int)widget.FiveByFourGaugeMode;
+        }
+        else
+        {
+            targetSelector.Items.Add("Kombiniert");
+            targetSelector.Items.Add("CPU");
+            targetSelector.Items.Add("GPU");
+            targetSelector.SelectedIndex = (int)widget.PanelTarget;
+        }
         StackPanel sensorPanel = new();
         targetSelector.SelectionChanged += (_, _) =>
         {
-            widget.SetPanelTarget((PanelTarget)targetSelector.SelectedIndex);
+            if (isFiveByFour)
+                widget.SetFiveByFourGaugeMode((FiveByFourGaugeMode)targetSelector.SelectedIndex);
+            else
+                widget.SetPanelTarget((PanelTarget)targetSelector.SelectedIndex);
             RebuildRelevantSensorSelectors(sensorPanel);
         };
         panel.Children.Add(targetSelector);
