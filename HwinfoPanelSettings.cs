@@ -296,9 +296,23 @@ public sealed class HwinfoPanelSettings : UserControl
 
         Expander sensorExpander = new()
         {
-            Header = "HWiNFO-Sensoren",
+            Header = new Border
+            {
+                Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
+                BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(8, 5, 8, 5),
+                Child = new TextBlock
+                {
+                    Text = "HWiNFO-Sensoren",
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 75, 115))
+                }
+            },
             IsExpanded = false,
             Margin = new Thickness(0, 18, 0, 0),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
+            BorderThickness = new Thickness(1),
             Content = sensorPanel
         };
         panel.Children.Add(sensorExpander);

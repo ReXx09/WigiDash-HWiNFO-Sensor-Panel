@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Controls;
@@ -28,6 +29,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private static Color sharedTemperatureHighColor = Color.FromArgb(230, 35, 38);
     private static int sharedTemperatureWarningThreshold = 70;
     private static int sharedTemperatureCriticalThreshold = 85;
+    private static readonly Bitmap logoBitmap = LoadLogoBitmap();
     private readonly HwinfoPanelFactory factory;
     private readonly ISensorSource sensorSource;
     private readonly object bitmapLock = new();
@@ -555,7 +557,33 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         string currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone).ToString("HH:mm:ss");
         SizeF timeSize = graphics.MeasureString(currentTime, timeFont);
         graphics.DrawString(currentTime, timeFont, timeBrush, (ReferenceWidth - timeSize.Width) / 2, 25);
-        graphics.DrawString("LIVE", detailFont, new SolidBrush(accent), ReferenceWidth - 58, 28);
+        const float rightPadding = 18;
+        const float logoSize = 24;
+        const float logoTextGap = 6;
+        SizeF authorSize = graphics.MeasureString("by ReXx09", detailFont);
+        float authorX = ReferenceWidth - rightPadding - authorSize.Width;
+        float logoX = authorX - logoTextGap - logoSize;
+        if (logoBitmap != null)
+        {
+            using Brush logoBackground = new SolidBrush(Color.White);
+            graphics.FillEllipse(logoBackground, logoX, 22, logoSize, logoSize);
+            graphics.DrawImage(logoBitmap, logoX, 22, logoSize, logoSize);
+        }
+        using Brush authorBrush = new SolidBrush(accent);
+        graphics.DrawString("by ReXx09", detailFont, authorBrush, authorX, 28);
+    }
+
+    private static Bitmap LoadLogoBitmap()
+    {
+        string assemblyDirectory = Path.GetDirectoryName(typeof(HwinfoPanelWidget).Assembly.Location) ?? string.Empty;
+        string logoPath = Path.Combine(assemblyDirectory, "IMG_0382.ico");
+        if (!File.Exists(logoPath))
+            logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "IMG_0382.ico");
+        if (!File.Exists(logoPath))
+            return null;
+
+        using Icon icon = new(logoPath);
+        return icon.ToBitmap();
     }
 
     private void DrawCoreCard(Graphics graphics, Rectangle bounds, string label, string model, double load, double temperature, double clock, double power, double fanRpm, Color accent, Font titleFont, Font valueFont, Font detailFont)
