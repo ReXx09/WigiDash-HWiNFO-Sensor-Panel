@@ -11,6 +11,11 @@ Dieses Projekt ist ein grafisches 5x4-WigiDash-Widget. Die Oberfläche wird voll
 - auswählbare CPU-, GPU- und RAM-Sensoren im Bearbeitungsmenü
 - Demo-Fallback außerhalb des WigiDash Managers
 
+## Unterstützen
+
+Wenn dir das HWiNFO Sensor Panel gefällt, kannst du die Weiterentwicklung über
+[GitHub Sponsors](https://github.com/sponsors/ReXx09) unterstützen.
+
 ## Demo-Animation
 
 ![Animierte Vorschau des 5x1-Widgets](docs/demo-animation.gif)
