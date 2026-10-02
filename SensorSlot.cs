@@ -18,7 +18,8 @@ public enum HeaderTouchAction
 {
     None,
     ToggleDisplay,
-    Refresh
+    Refresh,
+    ExternalAction
 }
 
 public enum SensorSlot
@@ -35,5 +36,7 @@ public enum SensorSlot
     CpuFan,
     GpuFan,
     MemoryLoad,
-    MemoryUsed
+    MemoryUsed,
+    NetworkUpload,
+    NetworkDownload
 }

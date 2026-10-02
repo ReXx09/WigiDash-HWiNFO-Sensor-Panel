@@ -95,7 +95,9 @@ public sealed class ManagerSensorSource : ISensorSource
                 MemoryUsedGigabytes = ReadMemoryUsedGigabytes(),
                 CpuFanRpm = (int)ReadValue(SensorSlot.CpuFan),
                 GpuFanRpm = (int)ReadValue(SensorSlot.GpuFan),
-                MemoryTotalGigabytes = 32
+                MemoryTotalGigabytes = 32,
+                NetworkUploadMegabytesPerSecond = ReadValue(SensorSlot.NetworkUpload),
+                NetworkDownloadMegabytesPerSecond = ReadValue(SensorSlot.NetworkDownload)
             };
         }
     }
@@ -208,6 +210,14 @@ public sealed class ManagerSensorSource : ISensorSource
             case SensorSlot.GpuFan:
                 if (unitIs("RPM")) score += 30;
                 if (has("Fan") || has("Pump")) score += 20;
+                break;
+            case SensorSlot.NetworkUpload:
+                if (has("Upload") || has("Sent") || has("Transmit") || has("Tx")) score += 40;
+                if (has("Network") || has("Ethernet") || has("Wi-Fi") || has("WiFi")) score += 20;
+                break;
+            case SensorSlot.NetworkDownload:
+                if (has("Download") || has("Received") || has("Receive") || has("Rx")) score += 40;
+                if (has("Network") || has("Ethernet") || has("Wi-Fi") || has("WiFi")) score += 20;
                 break;
         }
 

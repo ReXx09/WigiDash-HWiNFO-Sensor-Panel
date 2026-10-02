@@ -55,6 +55,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private PanelTarget panelTarget = PanelTarget.Combined;
     private string timeZoneId = TimeZoneInfo.Local.Id;
     private HeaderTouchAction headerTouchAction;
+    private Guid? headerExternalActionId;
+    private int timeFontSize = 15;
+    private Color timeColor = Color.FromArgb(170, 178, 190);
 
     public HwinfoPanelWidget(HwinfoPanelFactory parent, WidgetSize widgetSize, Guid instanceGuid, ISensorSource source)
     {
@@ -94,6 +97,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             UpdateNow();
         else if (headerTouchAction == HeaderTouchAction.ToggleDisplay)
             ToggleDisplayMode();
+        else if (headerTouchAction == HeaderTouchAction.ExternalAction && headerExternalActionId.HasValue)
+            factory.WidgetManager?.TriggerAction(headerExternalActionId.Value);
     }
 
     public UserControl GetSettingsControl() => new HwinfoPanelSettings(this);
@@ -115,6 +120,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public PanelTarget PanelTarget => panelTarget;
     public string TimeZoneId => timeZoneId;
     public HeaderTouchAction HeaderTouchAction => headerTouchAction;
+    public Guid? HeaderExternalActionId => headerExternalActionId;
+    public int TimeFontSize => timeFontSize;
+    public Color TimeColor => timeColor;
+    public IReadOnlyDictionary<Guid, string> AvailableExternalActions => factory.WidgetManager?.GetTriggerList() ?? new Dictionary<Guid, string>();
     public IReadOnlyList<SensorItem> AvailableSensors => (sensorSource as ManagerSensorSource)?.Sensors ?? Array.Empty<SensorItem>();
 
     public Guid? GetBoundSensor(SensorSlot slot)
@@ -244,6 +253,26 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     {
         headerTouchAction = action;
         factory.WidgetManager?.StoreSetting(this, "HeaderTouchAction", action.ToString());
+    }
+
+    public void SetHeaderExternalAction(Guid? actionId)
+    {
+        headerExternalActionId = actionId;
+        factory.WidgetManager?.StoreSetting(this, "HeaderExternalActionId", actionId?.ToString() ?? string.Empty);
+    }
+
+    public void SetTimeFontSize(int size)
+    {
+        timeFontSize = size < 10 ? 10 : size > 24 ? 24 : size;
+        factory.WidgetManager?.StoreSetting(this, "TimeFontSize", timeFontSize.ToString());
+        RequestUpdate();
+    }
+
+    public void SetTimeColor(Color color)
+    {
+        timeColor = color;
+        factory.WidgetManager?.StoreSetting(this, "TimeColor", ColorTranslator.ToHtml(color));
+        RequestUpdate();
     }
 
     private void ToggleDisplayMode()
@@ -386,6 +415,25 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             Enum.TryParse(savedHeaderTouchAction, out HeaderTouchAction headerAction))
             headerTouchAction = headerAction;
 
+        if (factory.WidgetManager.LoadSetting(this, "HeaderExternalActionId", out string savedHeaderExternalActionId) &&
+            Guid.TryParse(savedHeaderExternalActionId, out Guid externalActionId))
+            headerExternalActionId = externalActionId;
+
+        if (factory.WidgetManager.LoadSetting(this, "TimeFontSize", out string savedTimeFontSize) &&
+            int.TryParse(savedTimeFontSize, out int fontSize))
+            timeFontSize = fontSize < 10 ? 10 : fontSize > 24 ? 24 : fontSize;
+
+        if (factory.WidgetManager.LoadSetting(this, "TimeColor", out string savedTimeColor))
+        {
+            try
+            {
+                timeColor = ColorTranslator.FromHtml(savedTimeColor);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         if (factory.WidgetManager.LoadSetting(this, "TimeZoneId", out string savedTimeZoneId))
         {
             try
@@ -468,8 +516,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                     {
                         int infoTop = bottomTop + 135 + gap;
                         DrawInfoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), "RAM USED", $"{data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB", accentColor, titleFont, detailFont);
-                        DrawInfoCard(graphics, new Rectangle(margin + smallWidth + gap, infoTop, smallWidth, 120), "GPU FAN", $"{data.GpuFanRpm:0} RPM", accentColor, titleFont, detailFont);
-                        DrawInfoCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), "CPU FAN", $"{data.CpuFanRpm:0} RPM", accentColor, titleFont, detailFont);
+                        DrawFanCard(graphics, new Rectangle(margin + smallWidth + gap, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
+                        DrawNetworkCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
                     }
                 }
             }
@@ -498,14 +546,15 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private void DrawHeader(Graphics graphics, Font titleFont, Font detailFont, SensorSnapshot data, Color accent)
     {
         using Brush white = new SolidBrush(Color.White);
-        using Brush muted = new SolidBrush(Color.FromArgb(170, 178, 190));
+        using Font timeFont = new("Segoe UI", timeFontSize, FontStyle.Bold);
+        using Brush timeBrush = new SolidBrush(timeColor);
         using Pen border = new(accent, 2);
         graphics.DrawRectangle(border, 8, 8, (int)ReferenceWidth - 16, 54);
         graphics.DrawString("HWiNFO SENSOR PANEL", titleFont, white, 18, 25);
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
         string currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone).ToString("HH:mm:ss");
-        SizeF timeSize = graphics.MeasureString(currentTime, titleFont);
-        graphics.DrawString(currentTime, titleFont, muted, (ReferenceWidth - timeSize.Width) / 2, 25);
+        SizeF timeSize = graphics.MeasureString(currentTime, timeFont);
+        graphics.DrawString(currentTime, timeFont, timeBrush, (ReferenceWidth - timeSize.Width) / 2, 25);
         graphics.DrawString("LIVE", detailFont, new SolidBrush(accent), ReferenceWidth - 58, 28);
     }
 
@@ -593,6 +642,32 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString(label, titleFont, white, bounds.X + 14, bounds.Y + 14);
         graphics.DrawString(value, detailFont, muted, bounds.X + 14, bounds.Y + 54);
         graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 86, bounds.Width - 28, 4);
+    }
+
+    private static void DrawFanCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accent);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        using Brush barBackground = new SolidBrush(Color.FromArgb(65, 73, 83));
+        graphics.DrawString("GPU / CPU FAN", titleFont, white, bounds.X + 14, bounds.Y + 12);
+        graphics.DrawString($"GPU  {data.GpuFanRpm:0} RPM", detailFont, muted, bounds.X + 14, bounds.Y + 48);
+        graphics.DrawString($"CPU  {data.CpuFanRpm:0} RPM", detailFont, muted, bounds.X + 14, bounds.Y + 76);
+        graphics.FillRectangle(barBackground, bounds.X + 14, bounds.Y + 68, bounds.Width - 28, 4);
+        graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 68, Math.Min(bounds.Width - 28, data.GpuFanRpm / 30f), 4);
+        graphics.FillRectangle(barBackground, bounds.X + 14, bounds.Y + 96, bounds.Width - 28, 4);
+        graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 96, Math.Min(bounds.Width - 28, data.CpuFanRpm / 30f), 4);
+    }
+
+    private static void DrawNetworkCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accent);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString("NETWORK", titleFont, white, bounds.X + 14, bounds.Y + 12);
+        graphics.DrawString($"Upload    {data.NetworkUploadMegabytesPerSecond:0.0} MB/s", detailFont, muted, bounds.X + 14, bounds.Y + 52);
+        graphics.DrawString($"Download  {data.NetworkDownloadMegabytesPerSecond:0.0} MB/s", detailFont, muted, bounds.X + 14, bounds.Y + 80);
+        graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 104, bounds.Width - 28, 4);
     }
 
     private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white, int width = 220)

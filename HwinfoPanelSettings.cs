@@ -188,7 +188,6 @@ public sealed class HwinfoPanelSettings : UserControl
         intervalValue = new TextBlock { Margin = new Thickness(0, 4, 0, 0) };
         panel.Children.Add(intervalValue);
 
-        panel.Children.Add(new TextBlock { Text = "Zeitzone", Margin = new Thickness(0, 14, 0, 4) });
         Dictionary<string, string> timeZoneOptions = new()
         {
             ["Lokale Zeit"] = TimeZoneInfo.Local.Id,
@@ -203,9 +202,12 @@ public sealed class HwinfoPanelSettings : UserControl
             ["Singapur"] = "Singapore Standard Time",
             ["Australien / Sydney"] = "AUS Eastern Standard Time"
         };
+        StackPanel headerOptions = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0) };
+        StackPanel timeZoneColumn = new() { Width = 145, Margin = new Thickness(0, 0, 8, 0) };
+        timeZoneColumn.Children.Add(new TextBlock { Text = "Zeitzone", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
         ComboBox timeZoneSelector = new()
         {
-            Width = 240,
+            Width = 137,
             ItemsSource = timeZoneOptions,
             DisplayMemberPath = "Key",
             SelectedValuePath = "Value",
@@ -218,13 +220,15 @@ public sealed class HwinfoPanelSettings : UserControl
             if (timeZoneSelector.SelectedValue is string selectedTimeZone)
                 widget.SetTimeZone(selectedTimeZone);
         };
-        panel.Children.Add(timeZoneSelector);
+        timeZoneColumn.Children.Add(timeZoneSelector);
+        headerOptions.Children.Add(timeZoneColumn);
 
-        panel.Children.Add(new TextBlock { Text = "Header-Touchaktion", Margin = new Thickness(0, 12, 0, 4) });
+        StackPanel headerActionColumn = new() { Width = 145, Margin = new Thickness(0, 0, 8, 0) };
+        headerActionColumn.Children.Add(new TextBlock { Text = "Header-Touchaktion", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
         ComboBox headerActionSelector = new()
         {
-            Width = 180,
-            ItemsSource = new[] { "Keine Aktion", "Anzeige umschalten", "Jetzt aktualisieren" },
+            Width = 137,
+            ItemsSource = new[] { "Keine Aktion", "Anzeige umschalten", "Jetzt aktualisieren", "Externe Aktion" },
             SelectedIndex = (int)widget.HeaderTouchAction,
             HorizontalAlignment = HorizontalAlignment.Left,
             HorizontalContentAlignment = HorizontalAlignment.Left
@@ -234,7 +238,60 @@ public sealed class HwinfoPanelSettings : UserControl
             if (headerActionSelector.SelectedIndex >= 0)
                 widget.SetHeaderTouchAction((HeaderTouchAction)headerActionSelector.SelectedIndex);
         };
-        panel.Children.Add(headerActionSelector);
+        headerActionColumn.Children.Add(headerActionSelector);
+        headerOptions.Children.Add(headerActionColumn);
+
+        StackPanel externalActionColumn = new() { Width = 180 };
+        externalActionColumn.Children.Add(new TextBlock { Text = "Externe Aktion", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
+        ComboBox externalActionSelector = new()
+        {
+            Width = 172,
+            ItemsSource = widget.AvailableExternalActions,
+            DisplayMemberPath = "Value",
+            SelectedValuePath = "Key",
+            SelectedValue = widget.HeaderExternalActionId,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        externalActionSelector.SelectionChanged += (_, _) =>
+        {
+            widget.SetHeaderExternalAction(externalActionSelector.SelectedValue is Guid actionId ? actionId : null);
+        };
+        externalActionColumn.Children.Add(externalActionSelector);
+        headerOptions.Children.Add(externalActionColumn);
+        panel.Children.Add(headerOptions);
+
+        StackPanel timeOptions = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        StackPanel timeSizeColumn = new() { Width = 145, Margin = new Thickness(0, 0, 8, 0) };
+        timeSizeColumn.Children.Add(new TextBlock { Text = "Uhrgröße", Margin = new Thickness(0, 0, 0, 4) });
+        ComboBox timeSizeSelector = new()
+        {
+            Width = 137,
+            ItemsSource = new[] { "Klein", "Mittel", "Groß" },
+            SelectedIndex = widget.TimeFontSize <= 13 ? 0 : widget.TimeFontSize >= 18 ? 2 : 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        timeSizeSelector.SelectionChanged += (_, _) =>
+        {
+            int[] sizes = { 12, 15, 18 };
+            if (timeSizeSelector.SelectedIndex >= 0)
+                widget.SetTimeFontSize(sizes[timeSizeSelector.SelectedIndex]);
+        };
+        timeSizeColumn.Children.Add(timeSizeSelector);
+        timeOptions.Children.Add(timeSizeColumn);
+
+        StackPanel timeColorColumn = new() { Width = 145 };
+        timeColorColumn.Children.Add(new TextBlock { Text = "Uhrfarbe", Margin = new Thickness(0, 0, 0, 4) });
+        ComboBox timeColorSelector = CreateTimeColorSelector(widget.TimeColor);
+        timeColorSelector.SelectionChanged += (_, _) =>
+        {
+            if (timeColorSelector.SelectedIndex >= 0)
+                widget.SetTimeColor(TimeColor(timeColorSelector.SelectedIndex));
+        };
+        timeColorColumn.Children.Add(timeColorSelector);
+        timeOptions.Children.Add(timeColorColumn);
+        panel.Children.Add(timeOptions);
 
         panel.Children.Add(new TextBlock { Text = "HWiNFO-Sensoren", Margin = new Thickness(0, 18, 0, 8), FontWeight = FontWeights.Bold });
         panel.Children.Add(sensorPanel);
@@ -316,6 +373,51 @@ public sealed class HwinfoPanelSettings : UserControl
         selector.Items.Add("Blau");
         selector.SelectedIndex = GaugeColorIndex(color);
         return selector;
+    }
+
+    private static ComboBox CreateTimeColorSelector(DrawingColor color)
+    {
+        ComboBox selector = new() { Width = 137, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
+        selector.Items.Add("Weiß");
+        selector.Items.Add("Blau");
+        selector.Items.Add("Gelb");
+        selector.Items.Add("Grün");
+        selector.Items.Add("Rot");
+        selector.SelectedIndex = TimeColorIndex(color);
+        return selector;
+    }
+
+    private static DrawingColor TimeColor(int index)
+    {
+        return index switch
+        {
+            1 => DrawingColor.FromArgb(45, 145, 230),
+            2 => DrawingColor.FromArgb(235, 190, 45),
+            3 => DrawingColor.FromArgb(55, 190, 105),
+            4 => DrawingColor.FromArgb(230, 35, 38),
+            _ => DrawingColor.White
+        };
+    }
+
+    private static int TimeColorIndex(DrawingColor color)
+    {
+        DrawingColor[] colors =
+        {
+            TimeColor(0), TimeColor(1), TimeColor(2), TimeColor(3), TimeColor(4)
+        };
+        int closestIndex = 0;
+        int closestDistance = int.MaxValue;
+        for (int index = 0; index < colors.Length; index++)
+        {
+            int distance = Math.Abs(color.R - colors[index].R) + Math.Abs(color.G - colors[index].G) + Math.Abs(color.B - colors[index].B);
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestIndex = index;
+            }
+        }
+
+        return closestIndex;
     }
 
     private static TextBox CreateThresholdInput(int value)
@@ -429,6 +531,8 @@ public sealed class HwinfoPanelSettings : UserControl
         AddSensorSelector(panel, "GPU-Lüfter", SensorSlot.GpuFan);
         AddSensorSelector(panel, "RAM-Last", SensorSlot.MemoryLoad);
         AddSensorSelector(panel, "RAM-Used", SensorSlot.MemoryUsed);
+        AddSensorSelector(panel, "Netzwerk Upload", SensorSlot.NetworkUpload);
+        AddSensorSelector(panel, "Netzwerk Download", SensorSlot.NetworkDownload);
     }
 
     private void RebuildRelevantSensorSelectors(StackPanel panel)
@@ -465,6 +569,16 @@ public sealed class HwinfoPanelSettings : UserControl
 
         if (slot == SensorSlot.MemoryLoad || slot == SensorSlot.MemoryUsed)
             return isMemory && !isCpu && !isGpu;
+
+        if (slot == SensorSlot.NetworkUpload || slot == SensorSlot.NetworkDownload)
+            return text.IndexOf("Network", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   text.IndexOf("Ethernet", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   text.IndexOf("Wi-Fi", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   text.IndexOf("WiFi", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   text.IndexOf("Upload", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   text.IndexOf("Download", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   text.IndexOf("Transmit", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   text.IndexOf("Receive", StringComparison.OrdinalIgnoreCase) >= 0;
 
         return true;
     }

@@ -20,4 +20,6 @@ public sealed class SensorSnapshot
     public double Fps { get; set; }
     public int CpuFanRpm { get; set; }
     public int GpuFanRpm { get; set; }
+    public double NetworkUploadMegabytesPerSecond { get; set; }
+    public double NetworkDownloadMegabytesPerSecond { get; set; }
 }

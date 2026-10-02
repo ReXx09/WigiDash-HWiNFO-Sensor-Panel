@@ -30,7 +30,9 @@ public sealed class DemoSensorSource : ISensorSource
             MemoryTotalGigabytes = 32,
             Fps = 118 + wave * 16,
             CpuFanRpm = 2036 + (int)(wave * 180),
-            GpuFanRpm = 980 + (int)(wave * 240)
+            GpuFanRpm = 980 + (int)(wave * 240),
+            NetworkUploadMegabytesPerSecond = 2.4 + wave * 1.8,
+            NetworkDownloadMegabytesPerSecond = 18 + wave * 14
         };
     }
 
