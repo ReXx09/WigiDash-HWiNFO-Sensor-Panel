@@ -87,6 +87,39 @@ public sealed class HwinfoPanelSettings : UserControl
         colorSelector.SelectionChanged += ColorSelector_SelectionChanged;
         accentColumn.Children.Add(colorSelector);
         mainOptions.Children.Add(accentColumn);
+
+        StackPanel memoryGaugeAlignmentColumn = new() { Width = 140 };
+        memoryGaugeAlignmentColumn.Children.Add(new TextBlock { Text = "RAM-Gauge", Margin = new Thickness(0, 0, 0, 4) });
+        ComboBox ramGaugeAlignmentSelector = new()
+        {
+            Width = 126,
+            ItemsSource = new[] { "Rechts", "Links" },
+            SelectedIndex = widget.RamGaugeAlignment == MemoryGaugeAlignment.Left ? 1 : 0,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        ramGaugeAlignmentSelector.SelectionChanged += (_, _) =>
+        {
+            if (ramGaugeAlignmentSelector.SelectedIndex >= 0)
+                widget.SetRamGaugeAlignment((MemoryGaugeAlignment)ramGaugeAlignmentSelector.SelectedIndex);
+        };
+        memoryGaugeAlignmentColumn.Children.Add(ramGaugeAlignmentSelector);
+        memoryGaugeAlignmentColumn.Children.Add(new TextBlock { Text = "VRAM-Gauge", Margin = new Thickness(0, 8, 0, 4) });
+        ComboBox vramGaugeAlignmentSelector = new()
+        {
+            Width = 126,
+            ItemsSource = new[] { "Rechts", "Links" },
+            SelectedIndex = widget.VramGaugeAlignment == MemoryGaugeAlignment.Left ? 1 : 0,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        vramGaugeAlignmentSelector.SelectionChanged += (_, _) =>
+        {
+            if (vramGaugeAlignmentSelector.SelectedIndex >= 0)
+                widget.SetVramGaugeAlignment((MemoryGaugeAlignment)vramGaugeAlignmentSelector.SelectedIndex);
+        };
+        memoryGaugeAlignmentColumn.Children.Add(vramGaugeAlignmentSelector);
+        mainOptions.Children.Add(memoryGaugeAlignmentColumn);
         panel.Children.Add(mainOptions);
 
         Grid gaugeOptions = new() { Margin = new Thickness(0, 12, 0, 0) };
@@ -188,6 +221,21 @@ public sealed class HwinfoPanelSettings : UserControl
         panel.Children.Add(intervalSlider);
         intervalValue = new TextBlock { Margin = new Thickness(0, 4, 0, 0) };
         panel.Children.Add(intervalValue);
+
+        panel.Children.Add(new TextBlock { Text = "Netzwerk-Skala (MB/s)", Margin = new Thickness(0, 12, 0, 4) });
+        TextBox networkScaleInput = new()
+        {
+            Width = 90,
+            Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##"),
+            HorizontalContentAlignment = HorizontalAlignment.Center
+        };
+        networkScaleInput.LostFocus += (_, _) =>
+        {
+            if (double.TryParse(networkScaleInput.Text, out double scale))
+                widget.SetNetworkScale(scale);
+            networkScaleInput.Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##");
+        };
+        panel.Children.Add(networkScaleInput);
 
         Dictionary<string, string> timeZoneOptions = new()
         {
@@ -299,8 +347,6 @@ public sealed class HwinfoPanelSettings : UserControl
             Header = new Border
             {
                 Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
-                BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
-                BorderThickness = new Thickness(1),
                 Padding = new Thickness(8, 5, 8, 5),
                 Child = new TextBlock
                 {
@@ -310,12 +356,15 @@ public sealed class HwinfoPanelSettings : UserControl
                 }
             },
             IsExpanded = false,
-            Margin = new Thickness(0, 18, 0, 0),
-            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
-            BorderThickness = new Thickness(1),
             Content = sensorPanel
         };
-        panel.Children.Add(sensorExpander);
+        panel.Children.Add(new Border
+        {
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 18, 0, 0),
+            Child = sensorExpander
+        });
         RebuildRelevantSensorSelectors(sensorPanel);
 
         Button updateButton = new() { Content = "Jetzt aktualisieren", Margin = new Thickness(0, 18, 0, 0), Padding = new Thickness(10, 5, 10, 5) };
@@ -567,10 +616,13 @@ public sealed class HwinfoPanelSettings : UserControl
         if (singleRow)
             return;
 
+        AddSensorSelector(panel, "GPU-VRAM", SensorSlot.GpuMemory);
+
         panel.Children.Add(new TextBlock { Text = "RAM", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 4) });
         Grid memoryGrid = CreateSensorGrid();
         AddSensorPair(memoryGrid, 0, "RAM-Last", SensorSlot.MemoryLoad, "RAM-Used", SensorSlot.MemoryUsed);
         panel.Children.Add(memoryGrid);
+        AddSensorSelector(panel, "RAM-Takt", SensorSlot.MemoryClock);
 
         Border networkSeparator = new() { BorderBrush = System.Windows.Media.Brushes.Gray, BorderThickness = new Thickness(0, 1, 0, 0), Margin = new Thickness(0, 10, 0, 6) };
         panel.Children.Add(networkSeparator);
@@ -601,6 +653,7 @@ public sealed class HwinfoPanelSettings : UserControl
     {
         string source = sensor.Source ?? string.Empty;
         string name = sensor.Name ?? string.Empty;
+        string unit = sensor.Unit ?? string.Empty;
         string text = $"{source} {name}";
         bool isCpu = text.IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0 ||
                      text.IndexOf("Processor", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -620,11 +673,47 @@ public sealed class HwinfoPanelSettings : UserControl
             return isCpu && !isGpu;
 
         if (slot == SensorSlot.GpuLoad || slot == SensorSlot.GpuTemperature || slot == SensorSlot.GpuClock ||
-            slot == SensorSlot.GpuPower || slot == SensorSlot.GpuMemory || slot == SensorSlot.GpuFan)
+            slot == SensorSlot.GpuPower || slot == SensorSlot.GpuFan)
             return isGpu;
 
-        if (slot == SensorSlot.MemoryLoad || slot == SensorSlot.MemoryUsed)
-            return isMemory && !isCpu && !isGpu;
+        if (slot == SensorSlot.GpuMemory)
+        {
+            bool memoryUnit = unit.Equals("MB", StringComparison.OrdinalIgnoreCase) ||
+                               unit.Equals("GB", StringComparison.OrdinalIgnoreCase);
+            return isGpu && memoryUnit &&
+                   (text.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    text.IndexOf("VRAM", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    text.IndexOf("Dedicated", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        if (slot == SensorSlot.MemoryLoad)
+        {
+            bool percentageUnit = unit.IndexOf("%", StringComparison.OrdinalIgnoreCase) >= 0;
+            return isMemory && !isCpu && !isGpu &&
+                   (percentageUnit || text.IndexOf("Load", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    text.IndexOf("Usage", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    text.IndexOf("Utilization", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        if (slot == SensorSlot.MemoryUsed)
+        {
+            bool memoryUnit = unit.Equals("MB", StringComparison.OrdinalIgnoreCase) ||
+                               unit.Equals("GB", StringComparison.OrdinalIgnoreCase);
+            return isMemory && !isCpu && !isGpu && memoryUnit &&
+                   (text.IndexOf("Used", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    text.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) >= 0) &&
+                   text.IndexOf("Load", StringComparison.OrdinalIgnoreCase) < 0 &&
+                   text.IndexOf("Usage", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        if (slot == SensorSlot.MemoryClock)
+        {
+            bool clockUnit = unit.Equals("MHz", StringComparison.OrdinalIgnoreCase);
+            return isMemory && !isCpu && !isGpu && clockUnit &&
+                   (text.IndexOf("Clock", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    text.IndexOf("Frequency", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    text.IndexOf("Memory", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
 
         if (slot == SensorSlot.NetworkUpload || slot == SensorSlot.NetworkDownload)
             return text.IndexOf("Network", StringComparison.OrdinalIgnoreCase) >= 0 ||

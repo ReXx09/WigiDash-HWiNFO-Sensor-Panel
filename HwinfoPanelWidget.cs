@@ -53,6 +53,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private int temperatureCriticalThreshold = 85;
     private bool oneByOneShowsTemperature;
     private FiveByFourGaugeMode fiveByFourGaugeMode = FiveByFourGaugeMode.Load;
+    private MemoryGaugeAlignment ramGaugeAlignment = MemoryGaugeAlignment.Right;
+    private MemoryGaugeAlignment vramGaugeAlignment = MemoryGaugeAlignment.Right;
+    private double networkScaleMegabytesPerSecond = 3000;
     private int updateIntervalMilliseconds = 250;
     private PanelTarget panelTarget = PanelTarget.Combined;
     private string timeZoneId = TimeZoneInfo.Local.Id;
@@ -118,6 +121,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public int TemperatureCriticalThreshold => sharedTemperatureCriticalThreshold;
     public bool OneByOneShowsTemperature => oneByOneShowsTemperature;
     public FiveByFourGaugeMode FiveByFourGaugeMode => fiveByFourGaugeMode;
+    public MemoryGaugeAlignment RamGaugeAlignment => ramGaugeAlignment;
+    public MemoryGaugeAlignment VramGaugeAlignment => vramGaugeAlignment;
+    public double NetworkScaleMegabytesPerSecond => networkScaleMegabytesPerSecond;
     public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
     public PanelTarget PanelTarget => panelTarget;
     public string TimeZoneId => timeZoneId;
@@ -213,6 +219,20 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         RequestUpdate();
     }
 
+    public void SetRamGaugeAlignment(MemoryGaugeAlignment alignment)
+    {
+        ramGaugeAlignment = alignment;
+        factory.WidgetManager?.StoreSetting(this, "RamGaugeAlignment", alignment.ToString());
+        RequestUpdate();
+    }
+
+    public void SetVramGaugeAlignment(MemoryGaugeAlignment alignment)
+    {
+        vramGaugeAlignment = alignment;
+        factory.WidgetManager?.StoreSetting(this, "VramGaugeAlignment", alignment.ToString());
+        RequestUpdate();
+    }
+
     private void StoreSharedSetting(string key, string value)
     {
         HwinfoPanelWidget[] widgets;
@@ -227,6 +247,13 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     {
         updateIntervalMilliseconds = milliseconds;
         factory.WidgetManager?.StoreSetting(this, "UpdateInterval", milliseconds.ToString());
+        RequestUpdate();
+    }
+
+    public void SetNetworkScale(double megabytesPerSecond)
+    {
+        networkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, megabytesPerSecond));
+        factory.WidgetManager?.StoreSetting(this, "NetworkScaleMegabytesPerSecond", networkScaleMegabytesPerSecond.ToString(System.Globalization.CultureInfo.InvariantCulture));
         RequestUpdate();
     }
 
@@ -409,6 +436,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             int.TryParse(savedInterval, out int interval))
             updateIntervalMilliseconds = interval < 100 ? 100 : interval > 2000 ? 2000 : interval;
 
+        if (factory.WidgetManager.LoadSetting(this, "NetworkScaleMegabytesPerSecond", out string savedNetworkScale) &&
+            double.TryParse(savedNetworkScale, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double networkScale))
+            networkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, networkScale));
+
         if (factory.WidgetManager.LoadSetting(this, "PanelTarget", out string savedTarget) &&
             Enum.TryParse(savedTarget, out PanelTarget target))
             panelTarget = target;
@@ -458,6 +489,20 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         else if (factory.WidgetManager.LoadSetting(this, "FiveByFourShowsTemperature", out string savedFiveByFourShowsTemperature) &&
                  bool.TryParse(savedFiveByFourShowsTemperature, out bool fiveByFourShowsTemperatureValue))
             fiveByFourGaugeMode = fiveByFourShowsTemperatureValue ? FiveByFourGaugeMode.Temperature : FiveByFourGaugeMode.Load;
+
+        if (factory.WidgetManager.LoadSetting(this, "RamGaugeAlignment", out string savedRamGaugeAlignment) &&
+            Enum.TryParse(savedRamGaugeAlignment, out MemoryGaugeAlignment ramAlignment))
+            ramGaugeAlignment = ramAlignment;
+
+        if (factory.WidgetManager.LoadSetting(this, "VramGaugeAlignment", out string savedVramGaugeAlignment) &&
+            Enum.TryParse(savedVramGaugeAlignment, out MemoryGaugeAlignment vramAlignment))
+            vramGaugeAlignment = vramAlignment;
+        else if (factory.WidgetManager.LoadSetting(this, "MemoryGaugeAlignment", out string savedMemoryGaugeAlignment) &&
+                 Enum.TryParse(savedMemoryGaugeAlignment, out MemoryGaugeAlignment legacyAlignment))
+        {
+            ramGaugeAlignment = legacyAlignment;
+            vramGaugeAlignment = legacyAlignment;
+        }
     }
 
     private void LoadSensorBindings()
@@ -510,9 +555,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
                     int bottomTop = top + largeHeight + gap;
                     int smallWidth = ((int)ReferenceWidth - margin * 2 - gap * 2) / 3;
-                    DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont);
-                    DrawNetworkCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont);
-                    DrawVramCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont);
+                    DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont, ramGaugeAlignment);
+                    DrawNetworkCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont, networkScaleMegabytesPerSecond);
+                    DrawVramCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont, vramGaugeAlignment);
 
                     if (WidgetSize.Width >= 5 && WidgetSize.Height >= 4)
                     {
@@ -609,12 +654,12 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             DrawGauge(graphics, loadCenter, gaugeRadius, load, GetGaugeColor(load), gaugeWidth);
             DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, GetTemperatureGaugeColor(temperature), gaugeWidth);
             DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, bounds.Y + 92);
-            DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, bounds.Y + 153);
+            DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, bounds.Y + 161);
             DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, bounds.Y + 92);
-            DrawCenteredText(graphics, "Temperature", detailFont, muted, temperatureCenter.X, bounds.Y + 153);
-            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 72, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 163);
-            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 111, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 163);
-            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 150, "Fan", $"{fanRpm:0} RPM", fanRpm / 3000, accentBrush, detailFont, white, 163);
+            DrawCenteredText(graphics, "Temperature", detailFont, muted, temperatureCenter.X, bounds.Y + 161);
+            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 72, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 163, 10);
+            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 111, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 163, 10);
+            DrawMetric(graphics, bounds.X + 145 + metricsX, bounds.Y + 150, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, 163, 10);
             return;
         }
 
@@ -626,25 +671,28 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         Point gaugeCenter = new(bounds.X + 100, bounds.Y + 115);
         DrawGauge(graphics, gaugeCenter, gaugeRadius, gaugeValue, gaugeColor, gaugeWidth);
         DrawCenteredText(graphics, gaugeText, valueFont, white, gaugeCenter.X, bounds.Y + 92);
-        DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 153);
+        DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 161);
         DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 65, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, 240);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 90, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 248);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 125, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 248);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 160, "Fan", $"{fanRpm:0} RPM", fanRpm / 3000, accentBrush, detailFont, white, 248);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 90, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 248, 10);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 125, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 248, 10);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 160, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, 248, 10);
     }
 
-    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont)
+    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
-        graphics.DrawString(data.MemoryName, titleFont, white, bounds.X + 14, bounds.Y + 12);
-        graphics.DrawString($"Load                         {data.MemoryLoadPercent:0}%", detailFont, muted, bounds.X + 14, bounds.Y + 50);
-        graphics.DrawString($"Used  {data.MemoryUsedGigabytes:0.0} GB / {data.MemoryTotalGigabytes:0} GB", detailFont, muted, bounds.X + 14, bounds.Y + 76);
-        graphics.DrawString("38-38-38-77 CR2", detailFont, muted, bounds.X + 14, bounds.Y + 102);
-        Point gaugeCenter = new(bounds.Right - 62, bounds.Y + 76);
+        bool gaugeOnLeft = alignment == MemoryGaugeAlignment.Left;
+        int contentX = gaugeOnLeft ? bounds.X + 118 : bounds.X + 14;
+        graphics.DrawString("RAM", titleFont, white, contentX, bounds.Y + 12);
+        graphics.DrawString($"Clock  {data.MemoryClockMhz:0} MHz", detailFont, muted, contentX, bounds.Y + 50);
+        graphics.DrawString($"Used  {data.MemoryUsedGigabytes:0.0} GB / {data.MemoryTotalGigabytes:0} GB", detailFont, muted, contentX, bounds.Y + 76);
+        graphics.DrawString("38-38-38-77 CR2", detailFont, muted, contentX, bounds.Y + 102);
+        Point gaugeCenter = new(gaugeOnLeft ? bounds.X + 62 : bounds.Right - 62, bounds.Y + 68);
         DrawGauge(graphics, gaugeCenter, 42, data.MemoryLoadPercent, accent, 16);
         DrawCenteredText(graphics, $"{data.MemoryLoadPercent:0}%", valueFont, white, gaugeCenter.X, gaugeCenter.Y - valueFont.Height / 2f);
+        DrawCenteredText(graphics, "Load", detailFont, muted, gaugeCenter.X, gaugeCenter.Y + 42);
     }
 
     private static void DrawFpsCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
@@ -678,7 +726,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 86, bounds.Width - 28, 4);
     }
 
-    private static void DrawVramCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont)
+    private static void DrawVramCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
@@ -687,49 +735,88 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         double usedGigabytes = data.GpuMemoryMegabytes / 1024;
         double totalGigabytes = totalMegabytes / 1024;
         double load = data.GpuMemoryMegabytes / totalMegabytes * 100;
-        graphics.DrawString("VRAM USED", titleFont, white, bounds.X + 14, bounds.Y + 12);
-        graphics.DrawString($"Load                         {load:0}%", detailFont, muted, bounds.X + 14, bounds.Y + 50);
-        graphics.DrawString($"Used  {usedGigabytes:0.0} GB / {totalGigabytes:0} GB", detailFont, muted, bounds.X + 14, bounds.Y + 76);
-        graphics.DrawString("GPU Memory", detailFont, muted, bounds.X + 14, bounds.Y + 102);
-        Point gaugeCenter = new(bounds.Right - 62, bounds.Y + 76);
+        bool gaugeOnLeft = alignment == MemoryGaugeAlignment.Left;
+        int contentX = gaugeOnLeft ? bounds.X + 118 : bounds.X + 14;
+        graphics.DrawString("VRAM", titleFont, white, contentX, bounds.Y + 12);
+        graphics.DrawString($"Clock  {data.GpuClockMhz:0} MHz", detailFont, muted, contentX, bounds.Y + 50);
+        graphics.DrawString($"Used  {usedGigabytes:0.0} GB / {totalGigabytes:0} GB", detailFont, muted, contentX, bounds.Y + 76);
+        graphics.DrawString("GPU Memory", detailFont, muted, contentX, bounds.Y + 102);
+        Point gaugeCenter = new(gaugeOnLeft ? bounds.X + 62 : bounds.Right - 62, bounds.Y + 68);
         DrawGauge(graphics, gaugeCenter, 42, load, accent, 16);
         DrawCenteredText(graphics, $"{load:0}%", valueFont, white, gaugeCenter.X, gaugeCenter.Y - valueFont.Height / 2f);
+        DrawCenteredText(graphics, "Load", detailFont, muted, gaugeCenter.X, gaugeCenter.Y + 42);
     }
 
     private static void DrawFanCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
-        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         using Brush barBackground = new SolidBrush(Color.FromArgb(65, 73, 83));
-        graphics.DrawString("GPU / CPU FAN", titleFont, white, bounds.X + 14, bounds.Y + 12);
-        graphics.DrawString($"GPU  {data.GpuFanRpm:0} RPM", detailFont, muted, bounds.X + 14, bounds.Y + 48);
-        graphics.DrawString($"CPU  {data.CpuFanRpm:0} RPM", detailFont, muted, bounds.X + 14, bounds.Y + 76);
-        graphics.FillRectangle(barBackground, bounds.X + 14, bounds.Y + 68, bounds.Width - 28, 4);
-        graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 68, Math.Min(bounds.Width - 28, data.GpuFanRpm / 30f), 4);
-        graphics.FillRectangle(barBackground, bounds.X + 14, bounds.Y + 96, bounds.Width - 28, 4);
-        graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 96, Math.Min(bounds.Width - 28, data.CpuFanRpm / 30f), 4);
+        using Brush barFill = new SolidBrush(accent);
+        DrawCenteredText(graphics, "GPU / CPU FAN", titleFont, white, bounds.X + bounds.Width / 2f, bounds.Y + 12);
+
+        const int barHeight = 30;
+        int labelX = bounds.X + 14;
+        float labelWidth = Math.Max(
+            graphics.MeasureString("GPU", detailFont).Width,
+            graphics.MeasureString("CPU", detailFont).Width);
+        int barX = labelX + (int)Math.Ceiling(labelWidth) + 10;
+        int barWidth = bounds.Right - 14 - barX;
+        int gpuBarY = bounds.Y + 42;
+        int cpuBarY = bounds.Y + 82;
+        float gpuProgress = (float)Math.Min(1, Math.Max(0, data.GpuFanRpm / 3000f));
+        float cpuProgress = (float)Math.Min(1, Math.Max(0, data.CpuFanRpm / 5000f));
+
+        graphics.DrawString("GPU", detailFont, white, labelX, gpuBarY + (barHeight - detailFont.Height) / 2f);
+        graphics.FillRectangle(barBackground, barX, gpuBarY, barWidth, barHeight);
+        graphics.FillRectangle(barFill, barX, gpuBarY, barWidth * gpuProgress, barHeight);
+        graphics.DrawString("CPU", detailFont, white, labelX, cpuBarY + (barHeight - detailFont.Height) / 2f);
+        graphics.FillRectangle(barBackground, barX, cpuBarY, barWidth, barHeight);
+        graphics.FillRectangle(barFill, barX, cpuBarY, barWidth * cpuProgress, barHeight);
+
+        DrawCenteredText(graphics, $"{data.GpuFanRpm:0} RPM", detailFont, white, barX + barWidth / 2f, gpuBarY + (barHeight - detailFont.Height) / 2f);
+        DrawCenteredText(graphics, $"{data.CpuFanRpm:0} RPM", detailFont, white, barX + barWidth / 2f, cpuBarY + (barHeight - detailFont.Height) / 2f);
     }
 
-    private static void DrawNetworkCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
+    private static void DrawNetworkCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont, double networkScaleMegabytesPerSecond)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
-        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
-        graphics.DrawString("NETWORK", titleFont, white, bounds.X + 14, bounds.Y + 12);
-        graphics.DrawString($"Upload    {data.NetworkUploadMegabytesPerSecond:0.0} MB/s", detailFont, muted, bounds.X + 14, bounds.Y + 52);
-        graphics.DrawString($"Download  {data.NetworkDownloadMegabytesPerSecond:0.0} MB/s", detailFont, muted, bounds.X + 14, bounds.Y + 80);
-        graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 104, bounds.Width - 28, 4);
+        using Brush barBackground = new SolidBrush(Color.FromArgb(65, 73, 83));
+        using Brush barFill = new SolidBrush(accent);
+        DrawCenteredText(graphics, "NETWORK", titleFont, white, bounds.X + bounds.Width / 2f, bounds.Y + 12);
+
+        const int barHeight = 30;
+        int labelX = bounds.X + 14;
+        float labelWidth = Math.Max(
+            graphics.MeasureString("Upload", detailFont).Width,
+            graphics.MeasureString("Download", detailFont).Width);
+        int barX = labelX + (int)Math.Ceiling(labelWidth) + 10;
+        int barWidth = bounds.Right - 14 - barX;
+        int uploadBarY = bounds.Y + 42;
+        int downloadBarY = bounds.Y + 82;
+        float uploadProgress = (float)Math.Min(1, Math.Max(0, data.NetworkUploadMegabytesPerSecond / networkScaleMegabytesPerSecond));
+        float downloadProgress = (float)Math.Min(1, Math.Max(0, data.NetworkDownloadMegabytesPerSecond / networkScaleMegabytesPerSecond));
+
+        graphics.DrawString("Upload", detailFont, white, labelX, uploadBarY + (barHeight - detailFont.Height) / 2f);
+        graphics.FillRectangle(barBackground, barX, uploadBarY, barWidth, barHeight);
+        graphics.FillRectangle(barFill, barX, uploadBarY, barWidth * uploadProgress, barHeight);
+        graphics.DrawString("Download", detailFont, white, labelX, downloadBarY + (barHeight - detailFont.Height) / 2f);
+        graphics.FillRectangle(barBackground, barX, downloadBarY, barWidth, barHeight);
+        graphics.FillRectangle(barFill, barX, downloadBarY, barWidth * downloadProgress, barHeight);
+
+        DrawCenteredText(graphics, $"{data.NetworkUploadMegabytesPerSecond:0.0} MB/s", detailFont, white, barX + barWidth / 2f, uploadBarY + (barHeight - detailFont.Height) / 2f);
+        DrawCenteredText(graphics, $"{data.NetworkDownloadMegabytesPerSecond:0.0} MB/s", detailFont, white, barX + barWidth / 2f, downloadBarY + (barHeight - detailFont.Height) / 2f);
     }
 
-    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white, int width = 220)
+    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white, int width = 220, int barHeight = 4)
     {
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         graphics.DrawString(label, detailFont, muted, x, y);
         graphics.DrawString(value, detailFont, white, x + 108, y);
         double clampedProgress = progress < 0 ? 0 : progress > 1 ? 1 : progress;
-        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 22, width, 4);
-        graphics.FillRectangle(accent, x, y + 22, (float)(width * clampedProgress), 4);
+        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 22, width, barHeight);
+        graphics.FillRectangle(accent, x, y + 22, (float)(width * clampedProgress), barHeight);
     }
 
     private void DrawCompactPanel(Graphics graphics, int width, int height, SensorSnapshot data, Font titleFont, Font valueFont, Font detailFont)

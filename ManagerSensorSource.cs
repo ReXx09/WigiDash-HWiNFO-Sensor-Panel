@@ -97,6 +97,7 @@ public sealed class ManagerSensorSource : ISensorSource
                 CpuFanRpm = (int)ReadValue(SensorSlot.CpuFan),
                 GpuFanRpm = (int)ReadValue(SensorSlot.GpuFan),
                 MemoryTotalGigabytes = 32,
+                MemoryClockMhz = ReadValue(SensorSlot.MemoryClock),
                 NetworkUploadMegabytesPerSecond = ReadValue(SensorSlot.NetworkUpload),
                 NetworkDownloadMegabytesPerSecond = ReadValue(SensorSlot.NetworkDownload)
             };
@@ -190,6 +191,7 @@ public sealed class ManagerSensorSource : ISensorSource
                 break;
             case SensorSlot.CpuClock:
             case SensorSlot.GpuClock:
+            case SensorSlot.MemoryClock:
                 if (unitIs("MHz")) score += 30;
                 if (has("Clock") || has("Frequency")) score += 20;
                 if (has("Memory")) score -= 15;

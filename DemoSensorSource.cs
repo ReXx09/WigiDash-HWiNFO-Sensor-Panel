@@ -29,6 +29,7 @@ public sealed class DemoSensorSource : ISensorSource
             MemoryLoadPercent = 41 + wave * 4,
             MemoryUsedGigabytes = 13.4 + wave * 0.5,
             MemoryTotalGigabytes = 32,
+            MemoryClockMhz = 3000 + wave * 120,
             NetworkUploadMegabytesPerSecond = 2.4 + wave * 1.6,
             NetworkDownloadMegabytesPerSecond = 48 + wave * 24,
             Fps = 118 + wave * 16,

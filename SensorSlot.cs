@@ -14,6 +14,12 @@ public enum FiveByFourGaugeMode
     Combined
 }
 
+public enum MemoryGaugeAlignment
+{
+    Right,
+    Left
+}
+
 public enum HeaderTouchAction
 {
     None,
@@ -37,6 +43,7 @@ public enum SensorSlot
     GpuFan,
     MemoryLoad,
     MemoryUsed,
+    MemoryClock,
     NetworkUpload,
     NetworkDownload
 }
