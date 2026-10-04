@@ -22,7 +22,7 @@ public sealed class HwinfoPanelFactory : IWidgetObject
         new WidgetSize(1, 3), new WidgetSize(2, 3), new WidgetSize(3, 3), new WidgetSize(4, 3), new WidgetSize(5, 3),
         new WidgetSize(1, 4), new WidgetSize(2, 4), new WidgetSize(3, 4), new WidgetSize(4, 4), new WidgetSize(5, 4)
     };
-    public Bitmap PreviewImage => HwinfoPanelWidget.CreatePreview(new WidgetSize(5, 4));
+    public Bitmap PreviewImage => HwinfoPanelWidget.CreatePreview(new WidgetSize(2, 2));
     public Bitmap WidgetThumbnail => HwinfoPanelWidget.CreatePreview(new WidgetSize(2, 2));
     public IWidgetManager WidgetManager { get; set; }
     public string LastErrorMessage { get; set; } = string.Empty;

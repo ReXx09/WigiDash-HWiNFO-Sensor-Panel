@@ -12,6 +12,18 @@ Grafisches WigiDash-Widget für CPU-, GPU-, RAM-, VRAM-, Lüfter- und Netzwerkda
 - Touchaktionen für Header und externe WigiDash-Aktionen
 - Logo und Autorenhinweis `by ReXx09`
 
+## Unterstützte Rastergrößen
+
+Das Widget wird mit einer einzigen DLL für alle folgenden Rastergrößen registriert:
+
+- Breite 1: `1x1`, `1x2`, `1x3`, `1x4`
+- Breite 2: `2x1`, `2x2`, `2x3`, `2x4`
+- Breite 3: `3x1`, `3x2`, `3x3`, `3x4`
+- Breite 4: `4x1`, `4x2`, `4x3`, `4x4`
+- Breite 5: `5x1`, `5x2`, `5x3`, `5x4`
+
+Die Darstellung passt sich automatisch an die gewählte Größe an. Die allgemeine Plugin-Vorschau verwendet bewusst ein neutrales `2x2`-Panel. Kleine Raster zeigen eine kompakte Sensoranzeige, breite einzeilige Raster ein horizontales Panel. Das große `5x4`-Raster bleibt verfügbar, muss aber ausdrücklich als Rastergröße ausgewählt werden. Es bietet die vollständige CPU-/GPU-, RAM-, VRAM- und Netzwerkdarstellung und kann zwischen Last, Temperatur und kombinierter Gauge-Ansicht umgeschaltet werden.
+
 ## Voraussetzungen
 
 - Windows mit installiertem WigiDash Manager
