@@ -34,7 +34,7 @@ public sealed class HwinfoPanelSettings : UserControl
         panel.Children.Add(new TextBlock { Text = "HWiNFO Sensor Panel", FontSize = 18, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 14) });
 
         StackPanel mainOptions = new() { Orientation = Orientation.Horizontal };
-        StackPanel targetColumn = new() { Width = 140, Margin = new Thickness(0, 0, 8, 0) };
+        StackPanel targetColumn = new() { Width = 230, Margin = new Thickness(0, 0, 8, 0) };
         targetColumn.Children.Add(new TextBlock { Text = "Panelbereich", Margin = new Thickness(0, 0, 0, 4) });
         ComboBox targetSelector = new() { Width = 126, HorizontalAlignment = HorizontalAlignment.Left, HorizontalContentAlignment = HorizontalAlignment.Left };
         bool isFiveByFour = widget.WidgetSize.Width == 5 && widget.WidgetSize.Height == 4;
@@ -77,10 +77,17 @@ public sealed class HwinfoPanelSettings : UserControl
                 widget.SetRamGaugeAlignment((MemoryGaugeAlignment)ramGaugeAlignmentSelector.SelectedIndex);
         };
         targetColumn.Children.Add(ramGaugeAlignmentSelector);
-        targetColumn.Children.Add(new TextBlock { Text = "Netzwerk-Skala (MB/s)", Margin = new Thickness(0, 8, 0, 4) });
+        targetColumn.Children.Add(new Border
+        {
+            BorderBrush = System.Windows.Media.Brushes.Gray,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Margin = new Thickness(0, 10, 0, 6)
+        });
+        StackPanel networkScaleRow = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        networkScaleRow.Children.Add(new TextBlock { Text = "Netzwerk-Skala (MB/s)", Width = 135, VerticalAlignment = VerticalAlignment.Center });
         TextBox networkScaleInput = new()
         {
-            Width = 126,
+            Width = 90,
             Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##"),
             HorizontalContentAlignment = HorizontalAlignment.Center
         };
@@ -90,7 +97,8 @@ public sealed class HwinfoPanelSettings : UserControl
                 widget.SetNetworkScale(scale);
             networkScaleInput.Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##");
         };
-        targetColumn.Children.Add(networkScaleInput);
+        networkScaleRow.Children.Add(networkScaleInput);
+        targetColumn.Children.Add(networkScaleRow);
         mainOptions.Children.Add(targetColumn);
 
         if (widget.WidgetSize.Width == 1 && widget.WidgetSize.Height == 1)
@@ -240,10 +248,15 @@ public sealed class HwinfoPanelSettings : UserControl
             },
             IsExpanded = true,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            Margin = new Thickness(0, 12, 0, 0),
             Content = gaugeOptions
         };
-        panel.Children.Add(gaugeColorExpander);
+        panel.Children.Add(new Border
+        {
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 12, 0, 0),
+            Child = gaugeColorExpander
+        });
 
         panel.Children.Add(new TextBlock { Text = "Aktualisierungsintervall", Margin = new Thickness(0, 16, 0, 4) });
         intervalSlider = new Slider { Minimum = 100, Maximum = 2000, TickFrequency = 100, IsSnapToTickEnabled = true, Value = widget.UpdateIntervalMilliseconds };
@@ -635,7 +648,9 @@ public sealed class HwinfoPanelSettings : UserControl
 
         AddSensorSelector(panel, "GPU-VRAM", SensorSlot.GpuMemory);
 
-        panel.Children.Add(new TextBlock { Text = "RAM", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 8, 0, 4) });
+        Border memorySeparator = new() { BorderBrush = System.Windows.Media.Brushes.Gray, BorderThickness = new Thickness(0, 1, 0, 0), Margin = new Thickness(0, 10, 0, 6) };
+        panel.Children.Add(memorySeparator);
+        panel.Children.Add(new TextBlock { Text = "RAM", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
         Grid memoryGrid = CreateSensorGrid();
         AddSensorPair(memoryGrid, 0, "RAM-Last", SensorSlot.MemoryLoad, "RAM-Used", SensorSlot.MemoryUsed);
         panel.Children.Add(memoryGrid);
