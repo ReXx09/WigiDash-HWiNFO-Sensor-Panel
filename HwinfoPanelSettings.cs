@@ -62,6 +62,35 @@ public sealed class HwinfoPanelSettings : UserControl
             RebuildRelevantSensorSelectors(sensorPanel);
         };
         targetColumn.Children.Add(targetSelector);
+        targetColumn.Children.Add(new TextBlock { Text = "RAM-Gauge", Margin = new Thickness(0, 8, 0, 4) });
+        ComboBox ramGaugeAlignmentSelector = new()
+        {
+            Width = 126,
+            ItemsSource = new[] { "Rechts", "Links" },
+            SelectedIndex = widget.RamGaugeAlignment == MemoryGaugeAlignment.Left ? 1 : 0,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        ramGaugeAlignmentSelector.SelectionChanged += (_, _) =>
+        {
+            if (ramGaugeAlignmentSelector.SelectedIndex >= 0)
+                widget.SetRamGaugeAlignment((MemoryGaugeAlignment)ramGaugeAlignmentSelector.SelectedIndex);
+        };
+        targetColumn.Children.Add(ramGaugeAlignmentSelector);
+        targetColumn.Children.Add(new TextBlock { Text = "Netzwerk-Skala (MB/s)", Margin = new Thickness(0, 8, 0, 4) });
+        TextBox networkScaleInput = new()
+        {
+            Width = 126,
+            Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##"),
+            HorizontalContentAlignment = HorizontalAlignment.Center
+        };
+        networkScaleInput.LostFocus += (_, _) =>
+        {
+            if (double.TryParse(networkScaleInput.Text, out double scale))
+                widget.SetNetworkScale(scale);
+            networkScaleInput.Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##");
+        };
+        targetColumn.Children.Add(networkScaleInput);
         mainOptions.Children.Add(targetColumn);
 
         if (widget.WidgetSize.Width == 1 && widget.WidgetSize.Height == 1)
@@ -86,25 +115,7 @@ public sealed class HwinfoPanelSettings : UserControl
         colorSelector.SelectedIndex = ColorIndex(widget.AccentColor);
         colorSelector.SelectionChanged += ColorSelector_SelectionChanged;
         accentColumn.Children.Add(colorSelector);
-        mainOptions.Children.Add(accentColumn);
-
-        StackPanel memoryGaugeAlignmentColumn = new() { Width = 140 };
-        memoryGaugeAlignmentColumn.Children.Add(new TextBlock { Text = "RAM-Gauge", Margin = new Thickness(0, 0, 0, 4) });
-        ComboBox ramGaugeAlignmentSelector = new()
-        {
-            Width = 126,
-            ItemsSource = new[] { "Rechts", "Links" },
-            SelectedIndex = widget.RamGaugeAlignment == MemoryGaugeAlignment.Left ? 1 : 0,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            HorizontalContentAlignment = HorizontalAlignment.Left
-        };
-        ramGaugeAlignmentSelector.SelectionChanged += (_, _) =>
-        {
-            if (ramGaugeAlignmentSelector.SelectedIndex >= 0)
-                widget.SetRamGaugeAlignment((MemoryGaugeAlignment)ramGaugeAlignmentSelector.SelectedIndex);
-        };
-        memoryGaugeAlignmentColumn.Children.Add(ramGaugeAlignmentSelector);
-        memoryGaugeAlignmentColumn.Children.Add(new TextBlock { Text = "VRAM-Gauge", Margin = new Thickness(0, 8, 0, 4) });
+        accentColumn.Children.Add(new TextBlock { Text = "VRAM-Gauge", Margin = new Thickness(0, 8, 0, 4) });
         ComboBox vramGaugeAlignmentSelector = new()
         {
             Width = 126,
@@ -118,8 +129,8 @@ public sealed class HwinfoPanelSettings : UserControl
             if (vramGaugeAlignmentSelector.SelectedIndex >= 0)
                 widget.SetVramGaugeAlignment((MemoryGaugeAlignment)vramGaugeAlignmentSelector.SelectedIndex);
         };
-        memoryGaugeAlignmentColumn.Children.Add(vramGaugeAlignmentSelector);
-        mainOptions.Children.Add(memoryGaugeAlignmentColumn);
+        accentColumn.Children.Add(vramGaugeAlignmentSelector);
+        mainOptions.Children.Add(accentColumn);
         panel.Children.Add(mainOptions);
 
         Grid gaugeOptions = new() { Margin = new Thickness(0, 12, 0, 0) };
@@ -213,7 +224,26 @@ public sealed class HwinfoPanelSettings : UserControl
         Grid.SetColumn(highTemperatureColumn, 2);
         Grid.SetRow(highTemperatureColumn, 3);
         gaugeOptions.Children.Add(highTemperatureColumn);
-        panel.Children.Add(gaugeOptions);
+        Expander gaugeColorExpander = new()
+        {
+            Header = new Border
+            {
+                Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(8, 5, 8, 5),
+                Child = new TextBlock
+                {
+                    Text = "CPU / GPU Gaugefarbe",
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 75, 115))
+                }
+            },
+            IsExpanded = true,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 12, 0, 0),
+            Content = gaugeOptions
+        };
+        panel.Children.Add(gaugeColorExpander);
 
         panel.Children.Add(new TextBlock { Text = "Aktualisierungsintervall", Margin = new Thickness(0, 16, 0, 4) });
         intervalSlider = new Slider { Minimum = 100, Maximum = 2000, TickFrequency = 100, IsSnapToTickEnabled = true, Value = widget.UpdateIntervalMilliseconds };
@@ -221,21 +251,6 @@ public sealed class HwinfoPanelSettings : UserControl
         panel.Children.Add(intervalSlider);
         intervalValue = new TextBlock { Margin = new Thickness(0, 4, 0, 0) };
         panel.Children.Add(intervalValue);
-
-        panel.Children.Add(new TextBlock { Text = "Netzwerk-Skala (MB/s)", Margin = new Thickness(0, 12, 0, 4) });
-        TextBox networkScaleInput = new()
-        {
-            Width = 90,
-            Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##"),
-            HorizontalContentAlignment = HorizontalAlignment.Center
-        };
-        networkScaleInput.LostFocus += (_, _) =>
-        {
-            if (double.TryParse(networkScaleInput.Text, out double scale))
-                widget.SetNetworkScale(scale);
-            networkScaleInput.Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##");
-        };
-        panel.Children.Add(networkScaleInput);
 
         Dictionary<string, string> timeZoneOptions = new()
         {
@@ -347,6 +362,7 @@ public sealed class HwinfoPanelSettings : UserControl
             Header = new Border
             {
                 Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
                 Padding = new Thickness(8, 5, 8, 5),
                 Child = new TextBlock
                 {
@@ -356,6 +372,7 @@ public sealed class HwinfoPanelSettings : UserControl
                 }
             },
             IsExpanded = false,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Content = sensorPanel
         };
         panel.Children.Add(new Border
