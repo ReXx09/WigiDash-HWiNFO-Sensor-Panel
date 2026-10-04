@@ -14,7 +14,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="IMG_0382.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="IMG_0382.ico" CopyToOutputDirectory="PreserveNewest" />
     <Reference Include="WigiDashWidgetFramework">
       <HintPath>$(WigiDashManagerPath)\WigiDashWidgetFramework.dll</HintPath>
       <Private>false</Private>
@@ -29,7 +29,7 @@
     </PropertyGroup>
     <MakeDir Directories="$(WigiDashTargetFolder)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(WigiDashTargetFolder)" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" />
-      <Copy SourceFiles="$(ProjectDir)IMG_0382.ico" DestinationFolder="$(WigiDashTargetFolder)" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" />
+    <Copy SourceFiles="$(ProjectDir)IMG_0382.ico" DestinationFolder="$(WigiDashTargetFolder)" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" />
     <Message Importance="High" Text="WigiDash Widget Zielordner: $(WigiDashTargetFolder)" />
   </Target>
 </Project>

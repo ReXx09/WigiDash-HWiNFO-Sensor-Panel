@@ -1,66 +1,83 @@
 # HWiNFO Sensor Panel für WigiDash
 
-Dieses Projekt ist ein grafisches 5x4-WigiDash-Widget. Die Oberfläche wird vollständig als Bitmap gezeichnet und ist deshalb frei gestaltbar: Anzeigen, Rahmen, Logos, Balken und Texte sind nicht auf die normalen WigiDash-Schaltflächen beschränkt.
+Grafisches WigiDash-Widget für CPU-, GPU-, RAM-, VRAM-, Lüfter- und Netzwerkdaten. Das Widget unterstützt alle Rastergrößen von 1x1 bis 5x4. Außerhalb des WigiDash Managers wird eine animierte Demoquelle verwendet.
 
-## Aktueller Stand
+## Funktionen
 
-- grafisches CPU-/GPU-Panel im Stil des Referenzbildes
-- RAM-, FPS- und Statusbereiche
-- animierte Demo-Werte zum Testen des Layouts
-- echte WigiDash-Sensorquelle über `GetSensorList()` und `SensorUpdated`
-- auswählbare CPU-, GPU- und RAM-Sensoren im Bearbeitungsmenü
-- Demo-Fallback außerhalb des WigiDash Managers
+- CPU- und GPU-Anzeige mit Last- und Temperatur-Gauges
+- RAM-, VRAM-, Lüfter- und Netzwerk-Karten
+- HWiNFO-Sensoren im Einstellungsmenü frei zuweisbar
+- konfigurierbare Gauge-Farben und Warnschwellen
+- Uhrzeit, Zeitzone, Uhrfarbe und Uhrgröße
+- Touchaktionen für Header und externe WigiDash-Aktionen
+- Logo und Autorenhinweis `by ReXx09`
 
-## Unterstützen
+## Voraussetzungen
 
-Wenn dir das HWiNFO Sensor Panel gefällt, kannst du die Weiterentwicklung über
-[GitHub Sponsors](https://github.com/sponsors/ReXx09) unterstützen.
+- Windows mit installiertem WigiDash Manager
+- .NET Framework 4.7.2 Developer Pack oder Visual Studio 2022 mit entsprechender Zielplattform
+- HWiNFO, wenn echte HWiNFO-Messwerte verwendet werden sollen
+- Zugriff auf die WigiDash-SDK-Datei `WigiDashWidgetFramework.dll`
+
+Standardpfad der SDK-Datei:
+
+`C:\Program Files (x86)\G.SKILL\WigiDash Manager\WigiDashWidgetFramework.dll`
+
+## Bauen und installieren
+
+PowerShell im Projektordner öffnen und zuerst den Debug- oder Release-Build ausführen:
+
+```powershell
+dotnet build .\HwinfoSensorPanel.csproj -c Release
+```
+
+Der Release-Build kopiert automatisch diese Dateien in den WigiDash-Widgetordner:
+
+- die Widget-DLL `B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D3.dll`
+- das Logo `IMG_0382.ico`
+
+Standardziel:
+
+`%APPDATA%\G.SKILL\WigiDashManager\Widgets\B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D3`
+
+Falls der WigiDash Manager an einem anderen Ort installiert ist:
+
+```powershell
+dotnet build .\HwinfoSensorPanel.csproj -c Release `
+	-p:WigiDashManagerPath="D:\Programme\WigiDash Manager"
+```
+
+Falls ein anderer Widget-Zielordner verwendet werden soll:
+
+```powershell
+dotnet build .\HwinfoSensorPanel.csproj -c Release `
+	-p:WigiDashUserWidgetsPath="D:\WigiDashWidgets"
+```
+
+Nach dem Build den WigiDash Manager neu starten oder seine Widget-Liste aktualisieren. Ist der Manager während des Builds geöffnet und sperrt die DLL, ihn schließen und den Release-Build erneut starten.
+
+## Installation prüfen
+
+Nach einem erfolgreichen Release-Build müssen beide Dateien vorhanden sein:
+
+```powershell
+$target = "$env:APPDATA\G.SKILL\WigiDashManager\Widgets\B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D3"
+Test-Path "$target\B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D3.dll"
+Test-Path "$target\IMG_0382.ico"
+```
+
+Beide Befehle müssen `True` ausgeben. Anschließend das Widget im Manager hinzufügen oder eine vorhandene Instanz neu laden.
+
+## Sensoren verwenden
+
+Im Einstellungsmenü des Widgets lassen sich die passenden CPU-, GPU-, RAM-, Lüfter- und Netzwerksensoren auswählen. Für echte Werte müssen HWiNFO und die Sensorintegration des WigiDash Managers aktiv sein. Ohne Manager beziehungsweise ohne verfügbare Sensorquelle zeigt das Widget Demo-Werte.
 
 ## Demo-Animation
 
 ![Animierte Vorschau des 5x1-Widgets](docs/demo-animation.gif)
 
-Wenn das Widget außerhalb des WigiDash Managers erzeugt wird, verwendet es [`DemoSensorSource`](DemoSensorSource.cs). Die Quelle erzeugt eine laufende Demo-Animation über eine Sinuskurve:
+Die Demoquelle [`DemoSensorSource`](DemoSensorSource.cs) erzeugt kontinuierlich wechselnde Last-, Temperatur-, Takt-, Leistungs- und Lüfterwerte. Sie wird für Vorschauen und außerhalb des laufenden WigiDash Managers verwendet.
 
-```csharp
-double seconds = (DateTime.UtcNow - started).TotalSeconds;
-double wave = (Math.Sin(seconds * 0.9) + 1) / 2;
-```
+## Unterstützen
 
-Damit verändern sich CPU-/GPU-Last, Temperaturen, Taktraten, Leistungsaufnahme, RAM-Auslastung, FPS und Lüfterdrehzahlen kontinuierlich. Die Werte laufen dabei zwischen realistischen Minimal- und Maximalwerten, sodass die Gauges und Balken auch ohne HWiNFO sichtbar reagieren.
-
-Die animierte Vorschau wird unter anderem für das Widget-Preview und das Thumbnail verwendet. Im laufenden WigiDash Manager ersetzt `ManagerSensorSource` diese Demoquelle durch die echten Sensorsignale.
-
-## Bauen
-
-Voraussetzungen:
-
-- Visual Studio 2022 mit .NET Framework 4.7.2 Developer Pack
-- WigiDash Manager installiert
-- HWiNFO für den späteren Shared-Memory-Zugriff
-
-Der Standardpfad für die SDK-DLL ist:
-
-`C:\Program Files (x86)\G.SKILL\WigiDash Manager\WigiDashWidgetFramework.dll`
-
-Falls der Manager an einem anderen Ort installiert ist, kann der Pfad beim Build gesetzt werden:
-
-```powershell
-dotnet build .\HwinfoSensorPanel.csproj -p:WigiDashManagerPath="D:\Programme\WigiDash Manager"
-```
-
-Bei einem Release-Build wird die DLL automatisch nach
-
-`%APPDATA%\G.SKILL\WigiDashManager\Widgets\B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D3`
-
-kopiert. Der Zielpfad kann überschrieben werden:
-
-```powershell
-dotnet build .\HwinfoSensorPanel.csproj -c Release -p:WigiDashUserWidgetsPath="D:\WigiDashWidgets"
-```
-
-Ist der WigiDash Manager während des Builds geöffnet, kann die DLL gesperrt sein. Dann den Manager schließen und den Release-Build erneut starten.
-
-## Nächster Schritt
-
-Im WigiDash Manager werden die Sensoren aus der SDK-Sensorliste bezogen. HWiNFO muss dafür laufen und seine Sensorintegration im Manager verfügbar sein. CPU-Last, CPU-Temperatur, GPU-Last, GPU-Temperatur und RAM-Last können im Bearbeitungsmenü ausgewählt werden. FPS bleibt eine separate Anzeige und benötigt später eine eigene Quelle.
+Die Weiterentwicklung kann über [GitHub Sponsors](https://github.com/sponsors/ReXx09) unterstützt werden.

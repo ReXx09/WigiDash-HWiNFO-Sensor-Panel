@@ -18,9 +18,9 @@ public sealed class SensorSnapshot
     public double MemoryLoadPercent { get; set; }
     public double MemoryUsedGigabytes { get; set; }
     public double MemoryTotalGigabytes { get; set; }
+    public double NetworkUploadMegabytesPerSecond { get; set; }
+    public double NetworkDownloadMegabytesPerSecond { get; set; }
     public double Fps { get; set; }
     public int CpuFanRpm { get; set; }
     public int GpuFanRpm { get; set; }
-    public double NetworkUploadMegabytesPerSecond { get; set; }
-    public double NetworkDownloadMegabytesPerSecond { get; set; }
 }
