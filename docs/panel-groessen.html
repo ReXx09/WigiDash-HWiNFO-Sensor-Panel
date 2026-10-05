@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>HWiNFO Sensor Panel - Groessen und Renderwerte</title>
+  <style>
+    @page { size: A4 landscape; margin: 12mm; }
+    :root { color: #111; background: #fff; font-family: Arial, Helvetica, sans-serif; }
+    body { margin: 0; font-size: 9pt; }
+    h1 { margin: 0 0 4mm; font-size: 18pt; }
+    p { margin: 0 0 4mm; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: 1px solid #555; padding: 4px 5px; vertical-align: top; overflow-wrap: anywhere; }
+    th { background: #e8e8e8; text-align: left; }
+    tbody tr:nth-child(even) { background: #f7f7f7; }
+    th:nth-child(1) { width: 9%; }
+    th:nth-child(2) { width: 18%; }
+    th:nth-child(3) { width: 15%; }
+    th:nth-child(4) { width: 10%; }
+    th:nth-child(5) { width: 18%; }
+    th:nth-child(6) { width: 10%; }
+    th:nth-child(7) { width: 20%; }
+    .note { margin-top: 4mm; font-size: 8pt; }
+    @media screen {
+      body { max-width: 1400px; margin: 24px auto; padding: 0 20px; }
+      table { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>HWiNFO Sensor Panel: Groessen und Renderwerte</h1>
+  <p>Aktueller Stand der Gauge-Radien, Ringstaerken, Schriftgroessen sowie Balkenhoehen und -laengen.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Panelgroesse</th>
+        <th>Darstellung</th>
+        <th>Gauge-Radius</th>
+        <th>Ringstaerke</th>
+        <th>Schriftgroessen</th>
+        <th>Balkenhoehe</th>
+        <th>Balkenlaenge</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>1x1</td><td>Kompakte Einzel-Gauge</td><td>49 px</td><td>20 px</td><td>Titel 15, Wert 22, Detail 11</td><td>Keine Datenbalken</td><td>Keine</td></tr>
+      <tr><td>1x2, 1x3, 1x4</td><td>Kompakte Einzel-Gauge</td><td>Dynamisch, etwa 50 px</td><td>10 px</td><td>Titel 15, Wert 22, Detail 11</td><td>Keine Datenbalken</td><td>Keine</td></tr>
+      <tr><td>2x1</td><td>Load- und Temperatur-Gauge</td><td>49 px</td><td>20 px</td><td>Titel 15, Wert 22, Detail 11</td><td>Keine Datenbalken</td><td>Keine</td></tr>
+      <tr><td>2x2</td><td>Load- und Temperatur-Gauge</td><td>Dynamisch, maximal 58 px</td><td>10 px</td><td>Titel 15, Wert 22, Detail 11</td><td>Keine Datenbalken</td><td>Keine</td></tr>
+      <tr><td>2x3</td><td>CPU/GPU-Kacheln sowie RAM/VRAM/Netzwerk</td><td>Dynamisch: max(40, min(Hoehe/4, Breite/6))</td><td>18 px</td><td>Titel mindestens 9, Wert mindestens 14, Detail mindestens 8</td><td>Sensor 4 px; Netzwerk 30 px</td><td>Sensor: Kachelbreite - 20; Netzwerk dynamisch</td></tr>
+      <tr><td>3x1</td><td>Horizontales CPU/GPU-Panel</td><td>Dynamisch, maximal 49 px</td><td>Dynamisch, 10-20 px</td><td>Titel 12, Wert 16, Detail 9</td><td>4 px</td><td>Temperatur 155 oder 115 px; Clock/Power 115-155 px</td></tr>
+      <tr><td>4x1, 5x1</td><td>Horizontales CPU/GPU-Panel</td><td>Dynamisch, maximal 49 px</td><td>Dynamisch, 10-20 px</td><td>Titel 12, Wert 16, Detail 9; Modell ggf. 8</td><td>4 px</td><td>Temperatur 155 px; Clock/Power 155 px</td></tr>
+      <tr><td>3x2, 4x2, 5x2</td><td>Grosses Hardware-Layout</td><td>58 px</td><td>10 px</td><td>Titel 15, Wert 22, Detail 11</td><td>Temperatur 4 px; uebrige Metriken 10 px</td><td>Temperatur 240 px; uebrige 248 px</td></tr>
+      <tr><td>3x3 kombiniert</td><td>CPU und GPU nebeneinander</td><td>45 px</td><td>20 px</td><td>Titel 15, Wert 22, Detail 11</td><td>10 px</td><td>Kartenbreite - 145 px</td></tr>
+      <tr><td>3x3 CPU/GPU einzeln</td><td>Load-Gauge, Temperatur-Gauge und Metriken</td><td>60 px</td><td>20 px</td><td>Titel 15, Wert 22, Detail 11</td><td>10 px</td><td>Kartenbreite - 360 px</td></tr>
+      <tr><td>3x4, 4x3, 4x4, 5x3</td><td>Grosses Hardware-Layout</td><td>58 px</td><td>10 px</td><td>Titel 15, Wert 22, Detail 11</td><td>Temperatur 4 px; uebrige Metriken 10 px</td><td>Temperatur 240 px; uebrige 248 px</td></tr>
+      <tr><td>5x4</td><td>Vollstaendiges Hardware-Layout</td><td>60 px</td><td>22 px</td><td>Titel 15, Wert 22, Detail 11</td><td>Clock/Power/Fan 10 px</td><td>163 px</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note"><strong>Hinweis:</strong> Grosse Layouts werden in einer Referenzgroesse gezeichnet und anschliessend skaliert. Die sichtbaren Pixelwerte koennen deshalb je nach WigiDash-Aufloesung leicht abweichen. Die kombinierte 5x4-Ansicht bleibt unabhaengig von der CPU/GPU-Auswahl kombiniert.</p>
+</body>
+</html>

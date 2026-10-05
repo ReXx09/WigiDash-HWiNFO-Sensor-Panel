@@ -10,6 +10,7 @@ Grafisches WigiDash-Widget für CPU-, GPU-, RAM-, VRAM-, Lüfter- und Netzwerkda
 - konfigurierbare Gauge-Farben und Warnschwellen
 - Uhrzeit, Zeitzone, Uhrfarbe und Uhrgröße
 - Touchaktionen für Header und externe WigiDash-Aktionen
+- mehrere Seiten (Hardware und Home) mit Touch-Navigation ab Raster `3x2`
 - Logo und Autorenhinweis `by ReXx09`
 
 ## Unterstützte Rastergrößen
@@ -23,6 +24,21 @@ Das Widget wird mit einer einzigen DLL für alle folgenden Rastergrößen regist
 - Breite 5: `5x1`, `5x2`, `5x3`, `5x4`
 
 Die Darstellung passt sich automatisch an die gewählte Größe an. Die allgemeine Plugin-Vorschau verwendet bewusst ein neutrales `2x2`-Panel. Kleine Raster zeigen eine kompakte Sensoranzeige, breite einzeilige Raster ein horizontales Panel. Das große `5x4`-Raster bleibt verfügbar, muss aber ausdrücklich als Rastergröße ausgewählt werden. Es bietet die vollständige CPU-/GPU-, RAM-, VRAM- und Netzwerkdarstellung und kann zwischen Last, Temperatur und kombinierter Gauge-Ansicht umgeschaltet werden.
+
+## Seiten
+
+Ab Raster `3x2` besteht das Widget aus mehreren Seiten, die per Touch gewechselt werden:
+
+- **Hardware**: das Sensorpanel mit CPU, GPU, RAM, VRAM, Netzwerk und Lüftern (Standard).
+- **Home**: Startseite mit vier konfigurierbaren Kacheln ab Raster `3x2`. Jede Kachel kann CPU, GPU, RAM, VRAM, Netzwerk, Lüfter, FPS oder Leer anzeigen.
+
+Auf der Hardware-Seite führt der `HOME`-Button im Header zurück zur Startseite. Welche Seite nach dem Laden erscheint, wird im Einstellungsmenü unter **Seiten → Startseite** gewählt. Der Seitenwechsel reagiert nur auf einfaches Tippen. Kleinere Raster zeigen weiterhin nur das Sensorpanel.
+
+Eine weitere Seite ergänzen:
+
+1. Eintrag in `PanelPage` ([SensorSlot.cs](SensorSlot.cs)) hinzufügen.
+2. Zeichenmethode schreiben und in der `switch`-Anweisung in `Draw` ([HwinfoPanelWidget.cs](HwinfoPanelWidget.cs)) eintragen.
+3. In `DrawHomePage` eine Kachel zeichnen und mit `NavigateTo(...)` als Touch-Bereich registrieren.
 
 ## Voraussetzungen
 

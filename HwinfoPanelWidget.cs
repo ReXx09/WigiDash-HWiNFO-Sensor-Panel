@@ -16,6 +16,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 {
     private const float ReferenceWidth = 1016f;
     private const float ReferenceHeight = 592f;
+    private static readonly Guid headerTouchTriggerId = Guid.Parse("B4C9D6B1-3C75-4C27-8E8F-1D2DA1B8A4D4");
     private static readonly object sharedGaugeSettingsLock = new();
     private static readonly HashSet<HwinfoPanelWidget> sharedGaugeWidgets = new();
     private static bool sharedGaugeSettingsLoaded;
@@ -53,14 +54,21 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private int temperatureCriticalThreshold = 85;
     private bool oneByOneShowsTemperature;
     private FiveByFourGaugeMode fiveByFourGaugeMode = FiveByFourGaugeMode.Load;
+    private TwoByThreeLayoutMode twoByThreeLayoutMode = TwoByThreeLayoutMode.Balanced;
     private MemoryGaugeAlignment ramGaugeAlignment = MemoryGaugeAlignment.Right;
     private MemoryGaugeAlignment vramGaugeAlignment = MemoryGaugeAlignment.Right;
-    private double networkScaleMegabytesPerSecond = 3000;
+    private double uploadNetworkScaleMegabytesPerSecond = 3000;
+    private double downloadNetworkScaleMegabytesPerSecond = 3000;
     private int updateIntervalMilliseconds = 250;
     private PanelTarget panelTarget = PanelTarget.Combined;
     private string timeZoneId = TimeZoneInfo.Local.Id;
     private HeaderTouchAction headerTouchAction;
     private Guid? headerExternalActionId;
+    private PanelPage startPage = PanelPage.Hardware;
+    private volatile PanelPage currentPage = PanelPage.Hardware;
+    private readonly HomeTileType[] homeTiles = { HomeTileType.Cpu, HomeTileType.Gpu, HomeTileType.Ram, HomeTileType.Network };
+    // Wird pro Frame komplett neu aufgebaut und erst danach atomar ersetzt.
+    private volatile List<HitTarget> hitTargets = new();
     private int timeFontSize = 15;
     private Color timeColor = Color.FromArgb(170, 178, 190);
 
@@ -74,6 +82,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         bitmapHeight = widgetSize.ToSize().Height;
         bitmap = new Bitmap(bitmapWidth, bitmapHeight);
         LoadSettings();
+        currentPage = startPage;
+        factory.WidgetManager?.RegisterTrigger(this, headerTouchTriggerId, "HWiNFO Sensor Panel: Header geklickt");
         lock (sharedGaugeSettingsLock)
             sharedGaugeWidgets.Add(this);
         LoadSensorBindings();
@@ -90,14 +100,21 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
     public void ClickEvent(ClickType clickType, int x, int y)
     {
-        if (headerTouchAction == HeaderTouchAction.None || WidgetSize.Width <= 2 || WidgetSize.Height <= 1)
+        if (!SupportsPages)
             return;
 
-        float referenceX = x * ReferenceWidth / bitmapWidth;
-        float referenceY = y * ReferenceHeight / bitmapHeight;
-        if (referenceX < 8 || referenceX > ReferenceWidth - 8 || referenceY < 8 || referenceY > 62)
+        float referenceX = x * LayoutReferenceWidth / bitmapWidth;
+        float referenceY = y * LayoutReferenceHeight / bitmapHeight;
+        if (clickType == ClickType.Single && TryHandlePageTouch((int)referenceX, (int)referenceY))
             return;
 
+        if (headerTouchAction == HeaderTouchAction.None)
+            return;
+
+        if (referenceX < 8 || referenceX > LayoutReferenceWidth - 8 || referenceY < 8 || referenceY > 62)
+            return;
+
+        factory.WidgetManager?.OnTriggerOccurred(headerTouchTriggerId);
         if (headerTouchAction == HeaderTouchAction.Refresh)
             UpdateNow();
         else if (headerTouchAction == HeaderTouchAction.ToggleDisplay)
@@ -107,6 +124,39 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     }
 
     public UserControl GetSettingsControl() => new HwinfoPanelSettings(this);
+
+    // Seiten gibt es nur in den Rastern, die das vollständige Layout mit Header zeichnen und Touch auswerten.
+    public bool SupportsPages => WidgetSize.Width >= 3 && WidgetSize.Height >= 2;
+    public PanelPage StartPage => startPage;
+    public HomeTileType GetHomeTileType(int index) => index >= 0 && index < homeTiles.Length ? homeTiles[index] : HomeTileType.Empty;
+
+    private float LayoutReferenceHeight => WidgetSize.Height >= 4 ? ReferenceHeight : 447f;
+    private float LayoutReferenceWidth => WidgetSize.Width == 3 && WidgetSize.Height == 3
+        ? bitmapWidth * 447f / bitmapHeight
+        : ReferenceWidth;
+
+    private bool TryHandlePageTouch(int referenceX, int referenceY)
+    {
+        foreach (HitTarget target in hitTargets)
+        {
+            if (!target.Bounds.Contains(referenceX, referenceY))
+                continue;
+
+            target.OnTap();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void NavigateTo(PanelPage page)
+    {
+        if (!SupportsPages || currentPage == page)
+            return;
+
+        currentPage = page;
+        UpdateNow();
+    }
 
     public Color AccentColor => accentColor;
     public Color GaugeLowColor => sharedGaugeLowColor;
@@ -121,9 +171,11 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public int TemperatureCriticalThreshold => sharedTemperatureCriticalThreshold;
     public bool OneByOneShowsTemperature => oneByOneShowsTemperature;
     public FiveByFourGaugeMode FiveByFourGaugeMode => fiveByFourGaugeMode;
+    public TwoByThreeLayoutMode TwoByThreeLayoutMode => twoByThreeLayoutMode;
     public MemoryGaugeAlignment RamGaugeAlignment => ramGaugeAlignment;
     public MemoryGaugeAlignment VramGaugeAlignment => vramGaugeAlignment;
-    public double NetworkScaleMegabytesPerSecond => networkScaleMegabytesPerSecond;
+    public double UploadNetworkScaleMegabytesPerSecond => uploadNetworkScaleMegabytesPerSecond;
+    public double DownloadNetworkScaleMegabytesPerSecond => downloadNetworkScaleMegabytesPerSecond;
     public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
     public PanelTarget PanelTarget => panelTarget;
     public string TimeZoneId => timeZoneId;
@@ -219,6 +271,13 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         RequestUpdate();
     }
 
+    public void SetTwoByThreeLayoutMode(TwoByThreeLayoutMode mode)
+    {
+        twoByThreeLayoutMode = mode;
+        factory.WidgetManager?.StoreSetting(this, "TwoByThreeLayoutMode", mode.ToString());
+        RequestUpdate();
+    }
+
     public void SetRamGaugeAlignment(MemoryGaugeAlignment alignment)
     {
         ramGaugeAlignment = alignment;
@@ -250,10 +309,17 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         RequestUpdate();
     }
 
-    public void SetNetworkScale(double megabytesPerSecond)
+    public void SetUploadNetworkScale(double megabytesPerSecond)
     {
-        networkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, megabytesPerSecond));
-        factory.WidgetManager?.StoreSetting(this, "NetworkScaleMegabytesPerSecond", networkScaleMegabytesPerSecond.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        uploadNetworkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, megabytesPerSecond));
+        factory.WidgetManager?.StoreSetting(this, "UploadNetworkScaleMegabytesPerSecond", uploadNetworkScaleMegabytesPerSecond.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        RequestUpdate();
+    }
+
+    public void SetDownloadNetworkScale(double megabytesPerSecond)
+    {
+        downloadNetworkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, megabytesPerSecond));
+        factory.WidgetManager?.StoreSetting(this, "DownloadNetworkScaleMegabytesPerSecond", downloadNetworkScaleMegabytesPerSecond.ToString(System.Globalization.CultureInfo.InvariantCulture));
         RequestUpdate();
     }
 
@@ -282,6 +348,24 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     {
         headerTouchAction = action;
         factory.WidgetManager?.StoreSetting(this, "HeaderTouchAction", action.ToString());
+    }
+
+    public void SetStartPage(PanelPage page)
+    {
+        startPage = page;
+        currentPage = page;
+        factory.WidgetManager?.StoreSetting(this, "StartPage", page.ToString());
+        UpdateNow();
+    }
+
+    public void SetHomeTileType(int index, HomeTileType tileType)
+    {
+        if (index < 0 || index >= homeTiles.Length)
+            return;
+
+        homeTiles[index] = tileType;
+        factory.WidgetManager?.StoreSetting(this, $"HomeTile{index + 1}", tileType.ToString());
+        RequestUpdate();
     }
 
     public void SetHeaderExternalAction(Guid? actionId)
@@ -328,6 +412,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     {
         running = false;
         stopEvent.Set();
+        factory.WidgetManager?.UnregisterTrigger(this, headerTouchTriggerId);
         if (drawThread.IsAlive) drawThread.Join();
         sensorSource.Dispose();
         lock (bitmapLock)
@@ -436,9 +521,22 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             int.TryParse(savedInterval, out int interval))
             updateIntervalMilliseconds = interval < 100 ? 100 : interval > 2000 ? 2000 : interval;
 
-        if (factory.WidgetManager.LoadSetting(this, "NetworkScaleMegabytesPerSecond", out string savedNetworkScale) &&
-            double.TryParse(savedNetworkScale, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double networkScale))
-            networkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, networkScale));
+        double legacyNetworkScale = 3000;
+        double parsedLegacyNetworkScale = 3000;
+        bool hasLegacyNetworkScale = factory.WidgetManager.LoadSetting(this, "NetworkScaleMegabytesPerSecond", out string savedNetworkScale) &&
+            double.TryParse(savedNetworkScale, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out parsedLegacyNetworkScale);
+        if (hasLegacyNetworkScale)
+            legacyNetworkScale = parsedLegacyNetworkScale;
+        if (factory.WidgetManager.LoadSetting(this, "UploadNetworkScaleMegabytesPerSecond", out string savedUploadScale) &&
+            double.TryParse(savedUploadScale, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double uploadNetworkScale))
+            uploadNetworkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, uploadNetworkScale));
+        else if (hasLegacyNetworkScale)
+            uploadNetworkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, legacyNetworkScale));
+        if (factory.WidgetManager.LoadSetting(this, "DownloadNetworkScaleMegabytesPerSecond", out string savedDownloadScale) &&
+            double.TryParse(savedDownloadScale, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double downloadNetworkScale))
+            downloadNetworkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, downloadNetworkScale));
+        else if (hasLegacyNetworkScale)
+            downloadNetworkScaleMegabytesPerSecond = Math.Max(100, Math.Min(100000, legacyNetworkScale));
 
         if (factory.WidgetManager.LoadSetting(this, "PanelTarget", out string savedTarget) &&
             Enum.TryParse(savedTarget, out PanelTarget target))
@@ -451,6 +549,17 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (factory.WidgetManager.LoadSetting(this, "HeaderExternalActionId", out string savedHeaderExternalActionId) &&
             Guid.TryParse(savedHeaderExternalActionId, out Guid externalActionId))
             headerExternalActionId = externalActionId;
+
+        if (factory.WidgetManager.LoadSetting(this, "StartPage", out string savedStartPage) &&
+            Enum.TryParse(savedStartPage, out PanelPage savedPage))
+            startPage = savedPage;
+
+        for (int index = 0; index < homeTiles.Length; index++)
+        {
+            if (factory.WidgetManager.LoadSetting(this, $"HomeTile{index + 1}", out string savedHomeTile) &&
+                Enum.TryParse(savedHomeTile, out HomeTileType homeTile))
+                homeTiles[index] = homeTile;
+        }
 
         if (factory.WidgetManager.LoadSetting(this, "TimeFontSize", out string savedTimeFontSize) &&
             int.TryParse(savedTimeFontSize, out int fontSize))
@@ -489,6 +598,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         else if (factory.WidgetManager.LoadSetting(this, "FiveByFourShowsTemperature", out string savedFiveByFourShowsTemperature) &&
                  bool.TryParse(savedFiveByFourShowsTemperature, out bool fiveByFourShowsTemperatureValue))
             fiveByFourGaugeMode = fiveByFourShowsTemperatureValue ? FiveByFourGaugeMode.Temperature : FiveByFourGaugeMode.Load;
+
+        if (factory.WidgetManager.LoadSetting(this, "TwoByThreeLayoutMode", out string savedTwoByThreeLayoutMode) &&
+            Enum.TryParse(savedTwoByThreeLayoutMode, out TwoByThreeLayoutMode twoByThreeMode))
+            twoByThreeLayoutMode = twoByThreeMode;
 
         if (factory.WidgetManager.LoadSetting(this, "RamGaugeAlignment", out string savedRamGaugeAlignment) &&
             Enum.TryParse(savedRamGaugeAlignment, out MemoryGaugeAlignment ramAlignment))
@@ -539,33 +652,29 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                     DrawFiveByOnePanel(graphics, next.Width, next.Height, data, WidgetSize.Width != 3);
                 else if (compact)
                     DrawCompactPanel(graphics, next.Width, next.Height, data, titleFont, valueFont, detailFont);
+                else if (WidgetSize.Width == 2 && WidgetSize.Height == 3)
+                    DrawTwoByThreePanel(graphics, next.Width, next.Height, data);
                 else
                 {
-                    float referenceHeight = WidgetSize.Height >= 4 ? ReferenceHeight : 447f;
-                    graphics.ScaleTransform(next.Width / ReferenceWidth, next.Height / referenceHeight);
-                    DrawHeader(graphics, titleFont, detailFont, data, accentColor);
+                    float referenceHeight = LayoutReferenceHeight;
+                    graphics.ScaleTransform(next.Width / LayoutReferenceWidth, next.Height / referenceHeight);
+                    PanelPage page = SupportsPages ? currentPage : PanelPage.Hardware;
+                    List<HitTarget> targets = new();
+                    bool compactThreeByThree = WidgetSize.Width == 3 && WidgetSize.Height == 3;
+                    if (!compactThreeByThree)
+                        DrawHeader(graphics, titleFont, detailFont, data, accentColor, SupportsPages && page != PanelPage.Home, targets);
 
-                    int margin = 12;
-                    int gap = 12;
-                    int top = 72;
-                    int largeWidth = ((int)ReferenceWidth - margin * 2 - gap) / 2;
-                    int largeHeight = 220;
-                    DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, data.CpuFanRpm, accentColor, titleFont, valueFont, detailFont);
-                    DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, data.GpuFanRpm, accentColor, titleFont, valueFont, detailFont);
-
-                    int bottomTop = top + largeHeight + gap;
-                    int smallWidth = ((int)ReferenceWidth - margin * 2 - gap * 2) / 3;
-                    DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont, ramGaugeAlignment);
-                    DrawNetworkCard(graphics, new Rectangle(margin + smallWidth + gap, bottomTop, smallWidth, 135), data, accentColor, titleFont, detailFont, networkScaleMegabytesPerSecond);
-                    DrawVramCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, bottomTop, smallWidth, 135), data, accentColor, titleFont, valueFont, detailFont, vramGaugeAlignment);
-
-                    if (WidgetSize.Width >= 5 && WidgetSize.Height >= 4)
+                    switch (page)
                     {
-                        int infoTop = bottomTop + 135 + gap;
-                        DrawLogoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), accentColor, titleFont, detailFont);
-                        DrawFanCard(graphics, new Rectangle(margin + smallWidth + gap, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
-                        DrawFpsCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
+                        case PanelPage.Home:
+                            DrawHomePage(graphics, referenceHeight, data, titleFont, detailFont, targets);
+                            break;
+                        default:
+                            DrawHardwarePage(graphics, data, titleFont, valueFont, detailFont);
+                            break;
                     }
+
+                    hitTargets = targets;
                 }
             }
 
@@ -576,6 +685,158 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                 old.Dispose();
             }
         }
+    }
+
+    private void DrawHardwarePage(Graphics graphics, SensorSnapshot data, Font titleFont, Font valueFont, Font detailFont)
+    {
+        int margin = 12;
+        int gap = 12;
+        bool isThreeByThree = WidgetSize.Width == 3 && WidgetSize.Height == 3;
+        int top = isThreeByThree ? 12 : 72;
+        int largeWidth = ((int)LayoutReferenceWidth - margin * 2 - gap) / 2;
+        int largeHeight = isThreeByThree ? 220 : 220;
+        if (isThreeByThree && panelTarget == PanelTarget.Cpu)
+        {
+            DrawCoreCard(graphics, new Rectangle(margin, top, (int)LayoutReferenceWidth - margin * 2, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, data.CpuFanRpm, accentColor, titleFont, valueFont, detailFont);
+        }
+        else if (isThreeByThree && panelTarget == PanelTarget.Gpu)
+        {
+            DrawCoreCard(graphics, new Rectangle(margin, top, (int)LayoutReferenceWidth - margin * 2, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, data.GpuFanRpm, accentColor, titleFont, valueFont, detailFont);
+        }
+        else
+        {
+            DrawCoreCard(graphics, new Rectangle(margin, top, largeWidth, largeHeight), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, data.CpuFanRpm, accentColor, titleFont, valueFont, detailFont);
+            DrawCoreCard(graphics, new Rectangle(margin + largeWidth + gap, top, largeWidth, largeHeight), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, data.GpuFanRpm, accentColor, titleFont, valueFont, detailFont);
+        }
+
+        int bottomTop = top + largeHeight + gap;
+        int smallWidth = ((int)LayoutReferenceWidth - margin * 2 - gap * 2) / 3;
+        int smallHeight = isThreeByThree ? 190 : 135;
+        int ramWidth = isThreeByThree ? smallWidth - 20 : smallWidth;
+        int networkWidth = isThreeByThree ? smallWidth + 40 : smallWidth;
+        int vramWidth = isThreeByThree ? smallWidth - 20 : smallWidth;
+        int networkX = margin + ramWidth + gap;
+        int vramX = networkX + networkWidth + gap;
+        DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, ramWidth, smallHeight), data, accentColor, titleFont, valueFont, detailFont, ramGaugeAlignment, isThreeByThree);
+        DrawNetworkCard(graphics, new Rectangle(networkX, bottomTop, networkWidth, smallHeight), data, accentColor, titleFont, detailFont, uploadNetworkScaleMegabytesPerSecond, downloadNetworkScaleMegabytesPerSecond);
+        DrawVramCard(graphics, new Rectangle(vramX, bottomTop, vramWidth, smallHeight), data, accentColor, titleFont, valueFont, detailFont, vramGaugeAlignment, isThreeByThree);
+
+        if (WidgetSize.Width >= 5 && WidgetSize.Height >= 4)
+        {
+            int infoTop = bottomTop + smallHeight + gap;
+            DrawLogoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), accentColor, titleFont, detailFont);
+            DrawFanCard(graphics, new Rectangle(margin + smallWidth + gap, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
+            DrawFpsCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
+        }
+    }
+
+    private void DrawHomePage(Graphics graphics, float referenceHeight, SensorSnapshot data, Font titleFont, Font detailFont, List<HitTarget> targets)
+    {
+        DrawHomeDashboard(graphics, referenceHeight, data, titleFont, detailFont);
+    }
+
+    private void DrawHomeDashboard(Graphics graphics, float referenceHeight, SensorSnapshot data, Font titleFont, Font detailFont)
+    {
+        const int margin = 12;
+        const int gap = 12;
+        int top = WidgetSize.Width == 3 && WidgetSize.Height == 3 ? 12 : 72;
+        int tileWidth = ((int)LayoutReferenceWidth - margin * 2 - gap) / 2;
+        int tileHeight = ((int)referenceHeight - top - margin - gap) / 2;
+
+        for (int index = 0; index < homeTiles.Length; index++)
+        {
+            int column = index % 2;
+            int row = index / 2;
+            Rectangle bounds = new(margin + column * (tileWidth + gap), top + row * (tileHeight + gap), tileWidth, tileHeight);
+            DrawHomeTile(graphics, bounds, homeTiles[index], data, titleFont, detailFont);
+        }
+    }
+
+    private void DrawHomeTile(Graphics graphics, Rectangle bounds, HomeTileType tileType, SensorSnapshot data, Font titleFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accentColor);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        string title;
+        string value;
+        string detail;
+
+        switch (tileType)
+        {
+            case HomeTileType.Cpu:
+                title = "CPU";
+                value = $"{data.CpuLoadPercent:0}%";
+                detail = $"{data.CpuTemperatureCelsius:0} °C   {data.CpuClockMhz:0} MHz";
+                break;
+            case HomeTileType.Gpu:
+                title = "GPU";
+                value = $"{data.GpuLoadPercent:0}%";
+                detail = $"{data.GpuTemperatureCelsius:0} °C   {data.GpuClockMhz:0} MHz";
+                break;
+            case HomeTileType.Ram:
+                title = "RAM";
+                value = $"{data.MemoryLoadPercent:0}%";
+                detail = $"{data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB";
+                break;
+            case HomeTileType.Vram:
+                double totalVram = data.GpuMemoryTotalMegabytes > 0 ? data.GpuMemoryTotalMegabytes : 24576;
+                title = "VRAM";
+                value = $"{data.GpuMemoryMegabytes / totalVram * 100:0}%";
+                detail = $"{data.GpuMemoryMegabytes / 1024:0.0} / {totalVram / 1024:0} GB";
+                break;
+            case HomeTileType.Network:
+                title = "NETWORK";
+                value = $"{data.NetworkDownloadMegabytesPerSecond:0.0} MB/s";
+                detail = $"Up {data.NetworkUploadMegabytesPerSecond:0.0} MB/s";
+                break;
+            case HomeTileType.Fans:
+                title = "FANS";
+                value = $"{data.CpuFanRpm:0} RPM";
+                detail = $"GPU {data.GpuFanRpm:0} RPM";
+                break;
+            case HomeTileType.Fps:
+                title = "FPS";
+                value = $"{data.Fps:0}";
+                detail = "Frame rate";
+                break;
+            default:
+                title = "EMPTY";
+                value = "-";
+                detail = "Home slot";
+                break;
+        }
+
+        graphics.DrawString(title, titleFont, white, bounds.X + 18, bounds.Y + 16);
+        using Font valueFont = new("Segoe UI", 30, FontStyle.Bold);
+        graphics.DrawString(value, valueFont, white, bounds.X + 18, bounds.Y + 62);
+        graphics.DrawString(detail, detailFont, muted, bounds.X + 18, bounds.Bottom - 32);
+    }
+
+    private void DrawHardwareTile(Graphics graphics, Rectangle bounds, SensorSnapshot data, Font titleFont, Font detailFont)
+    {
+        DrawCardFrame(graphics, bounds, accentColor);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        int x = bounds.X + 20;
+        graphics.DrawString("HARDWARE", titleFont, white, x, bounds.Y + 16);
+        graphics.DrawString("CPU \u00b7 GPU \u00b7 RAM \u00b7 VRAM \u00b7 Network", detailFont, muted, x, bounds.Y + 46);
+
+        string[] labels = { "CPU", "GPU", "RAM" };
+        string[] values =
+        {
+            $"{data.CpuLoadPercent:0} %    {data.CpuTemperatureCelsius:0} \u00b0C",
+            $"{data.GpuLoadPercent:0} %    {data.GpuTemperatureCelsius:0} \u00b0C",
+            $"{data.MemoryLoadPercent:0} %    {data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB"
+        };
+        for (int index = 0; index < labels.Length; index++)
+        {
+            int y = bounds.Y + 86 + index * 26;
+            graphics.DrawString(labels[index], detailFont, muted, x, y);
+            graphics.DrawString(values[index], detailFont, white, x + 60, y);
+        }
+
+        using StringFormat bottomRight = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Far };
+        graphics.DrawString("Tap to open  >", detailFont, muted, new RectangleF(bounds.X + 12, bounds.Y + 12, bounds.Width - 24, bounds.Height - 24), bottomRight);
     }
 
     private void PublishBitmap()
@@ -590,7 +851,19 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         copy.Dispose();
     }
 
-    private void DrawHeader(Graphics graphics, Font titleFont, Font detailFont, SensorSnapshot data, Color accent)
+    private sealed class HitTarget
+    {
+        public HitTarget(Rectangle bounds, Action onTap)
+        {
+            Bounds = bounds;
+            OnTap = onTap;
+        }
+
+        public Rectangle Bounds { get; }
+        public Action OnTap { get; }
+    }
+
+    private void DrawHeader(Graphics graphics, Font titleFont, Font detailFont, SensorSnapshot data, Color accent, bool showHomeButton, List<HitTarget> targets)
     {
         using Brush white = new SolidBrush(Color.White);
         using Font timeFont = new("Segoe UI", timeFontSize, FontStyle.Bold);
@@ -616,6 +889,21 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         }
         using Brush authorBrush = new SolidBrush(accent);
         graphics.DrawString("by ReXx09", detailFont, authorBrush, authorX, 28);
+
+        if (showHomeButton)
+        {
+            Rectangle homeButton = new((int)logoX - 18 - 96, 18, 96, 34);
+            using Brush homeBackground = new SolidBrush(Color.FromArgb(22, 25, 31));
+            using Font homeFont = new("Segoe UI", 11, FontStyle.Bold);
+            using StringFormat centered = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            graphics.FillRectangle(homeBackground, homeButton);
+            graphics.DrawRectangle(border, homeButton);
+            graphics.DrawString("HOME", homeFont, white, homeButton, centered);
+
+            Rectangle homeTouchArea = homeButton;
+            homeTouchArea.Inflate(8, 8);
+            targets.Add(new HitTarget(homeTouchArea, () => NavigateTo(PanelPage.Home)));
+        }
     }
 
     private static Bitmap LoadLogoBitmap()
@@ -644,8 +932,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString(label, titleFont, white, headerStart, bounds.Y + 14);
         graphics.DrawString(model, detailFont, muted, headerStart + labelSize.Width + 8, bounds.Y + 18);
         bool isFiveByFour = WidgetSize.Width == 5 && WidgetSize.Height == 4;
-        int gaugeRadius = isFiveByFour ? 60 : 58;
-        int gaugeWidth = isFiveByFour ? 22 : 10;
+        bool isThreeByThree = WidgetSize.Width == 3 && WidgetSize.Height == 3;
+        int gaugeRadius = isFiveByFour ? 60 : isThreeByThree ? (panelTarget == PanelTarget.Combined ? 45 : 60) : 58;
+        int gaugeWidth = isFiveByFour ? 22 : isThreeByThree ? 20 : 10;
+        int metricBarAdjustment = isThreeByThree ? -10 : 0;
         int metricsX = 15;
         if (isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Combined)
         {
@@ -663,6 +953,38 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             return;
         }
 
+        if (isThreeByThree)
+        {
+            bool singleTarget = panelTarget != PanelTarget.Combined;
+            Point compactCenter = new(bounds.X + (singleTarget ? 70 : 68), bounds.Y + 115);
+            DrawGauge(graphics, compactCenter, gaugeRadius, load, GetGaugeColor(load), gaugeWidth);
+            DrawCenteredText(graphics, $"{load:0}%", valueFont, white, compactCenter.X, bounds.Y + 92);
+            DrawCenteredText(graphics, "Load", detailFont, muted, compactCenter.X, bounds.Y + 161);
+            if (singleTarget)
+            {
+                Point temperatureCenter = new(bounds.Right - 70, bounds.Y + 115);
+                DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, GetTemperatureGaugeColor(temperature), gaugeWidth);
+                DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, bounds.Y + 92);
+                DrawCenteredText(graphics, "Temp", detailFont, muted, temperatureCenter.X, bounds.Y + 161);
+            }
+            int compactMetricX = bounds.X + (singleTarget ? 180 : 125);
+            int compactMetricWidth = bounds.Width - (singleTarget ? 360 : 145);
+            if (singleTarget)
+            {
+                DrawMetric(graphics, compactMetricX, bounds.Y + 65, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 100, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 135, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+            }
+            else
+            {
+                DrawMetric(graphics, compactMetricX, bounds.Y + 65, "Temp", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 100, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 135, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 170, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+            }
+            return;
+        }
+
         bool showTemperatureGauge = isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Temperature;
         double gaugeValue = showTemperatureGauge ? temperature : load;
         Color gaugeColor = showTemperatureGauge ? GetTemperatureGaugeColor(temperature) : GetGaugeColor(load);
@@ -672,17 +994,29 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawGauge(graphics, gaugeCenter, gaugeRadius, gaugeValue, gaugeColor, gaugeWidth);
         DrawCenteredText(graphics, gaugeText, valueFont, white, gaugeCenter.X, bounds.Y + 92);
         DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 161);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 65, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, 240);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 90, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 248, 10);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 125, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 248, 10);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 160, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, 248, 10);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 65, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, 240 + metricBarAdjustment);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 90, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 248 + metricBarAdjustment, 10);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 125, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 248 + metricBarAdjustment, 10);
+        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 160, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, 248 + metricBarAdjustment, 10);
     }
 
-    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment)
+    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment, bool compactThreeByThree)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        if (compactThreeByThree)
+        {
+            graphics.DrawString("RAM", titleFont, white, bounds.X + 10, bounds.Y + 10);
+            Point centeredGauge = new(bounds.X + bounds.Width / 2, bounds.Y + 88);
+            DrawGauge(graphics, centeredGauge, 42, data.MemoryLoadPercent, accent, 16);
+            DrawCenteredText(graphics, $"{data.MemoryLoadPercent:0}%", valueFont, white, centeredGauge.X, centeredGauge.Y - valueFont.Height / 2f);
+            DrawCenteredText(graphics, "Load", detailFont, muted, centeredGauge.X, centeredGauge.Y + 27);
+            DrawCenteredText(graphics, $"Clock  {data.MemoryClockMhz:0} MHz", detailFont, muted, bounds.X + bounds.Width / 2f, bounds.Y + 137);
+            DrawCenteredText(graphics, $"Used  {data.MemoryUsedGigabytes:0.0} GB / {data.MemoryTotalGigabytes:0} GB", detailFont, muted, bounds.X + bounds.Width / 2f, bounds.Y + 163);
+            return;
+        }
+
         bool gaugeOnLeft = alignment == MemoryGaugeAlignment.Left;
         int contentX = gaugeOnLeft ? bounds.X + 118 : bounds.X + 14;
         graphics.DrawString("RAM", titleFont, white, contentX, bounds.Y + 12);
@@ -726,7 +1060,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 86, bounds.Width - 28, 4);
     }
 
-    private static void DrawVramCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment)
+    private static void DrawVramCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment, bool compactThreeByThree)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
@@ -735,6 +1069,18 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         double usedGigabytes = data.GpuMemoryMegabytes / 1024;
         double totalGigabytes = totalMegabytes / 1024;
         double load = data.GpuMemoryMegabytes / totalMegabytes * 100;
+        if (compactThreeByThree)
+        {
+            graphics.DrawString("VRAM", titleFont, white, bounds.X + 10, bounds.Y + 10);
+            Point centeredGauge = new(bounds.X + bounds.Width / 2, bounds.Y + 88);
+            DrawGauge(graphics, centeredGauge, 42, load, accent, 16);
+            DrawCenteredText(graphics, $"{load:0}%", valueFont, white, centeredGauge.X, centeredGauge.Y - valueFont.Height / 2f);
+            DrawCenteredText(graphics, "Load", detailFont, muted, centeredGauge.X, centeredGauge.Y + 27);
+            DrawCenteredText(graphics, $"Clock  {data.GpuClockMhz:0} MHz", detailFont, muted, bounds.X + bounds.Width / 2f, bounds.Y + 137);
+            DrawCenteredText(graphics, $"Used  {usedGigabytes:0.0} GB / {totalGigabytes:0} GB", detailFont, muted, bounds.X + bounds.Width / 2f, bounds.Y + 163);
+            return;
+        }
+
         bool gaugeOnLeft = alignment == MemoryGaugeAlignment.Left;
         int contentX = gaugeOnLeft ? bounds.X + 118 : bounds.X + 14;
         graphics.DrawString("VRAM", titleFont, white, contentX, bounds.Y + 12);
@@ -778,7 +1124,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawCenteredText(graphics, $"{data.CpuFanRpm:0} RPM", detailFont, white, barX + barWidth / 2f, cpuBarY + (barHeight - detailFont.Height) / 2f);
     }
 
-    private static void DrawNetworkCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont, double networkScaleMegabytesPerSecond)
+    private static void DrawNetworkCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont, double uploadNetworkScaleMegabytesPerSecond, double downloadNetworkScaleMegabytesPerSecond)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
@@ -795,8 +1141,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         int barWidth = bounds.Right - 14 - barX;
         int uploadBarY = bounds.Y + 42;
         int downloadBarY = bounds.Y + 82;
-        float uploadProgress = (float)Math.Min(1, Math.Max(0, data.NetworkUploadMegabytesPerSecond / networkScaleMegabytesPerSecond));
-        float downloadProgress = (float)Math.Min(1, Math.Max(0, data.NetworkDownloadMegabytesPerSecond / networkScaleMegabytesPerSecond));
+        float uploadProgress = (float)Math.Min(1, Math.Max(0, data.NetworkUploadMegabytesPerSecond / uploadNetworkScaleMegabytesPerSecond));
+        float downloadProgress = (float)Math.Min(1, Math.Max(0, data.NetworkDownloadMegabytesPerSecond / downloadNetworkScaleMegabytesPerSecond));
 
         graphics.DrawString("Upload", detailFont, white, labelX, uploadBarY + (barHeight - detailFont.Height) / 2f);
         graphics.FillRectangle(barBackground, barX, uploadBarY, barWidth, barHeight);
@@ -809,11 +1155,11 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawCenteredText(graphics, $"{data.NetworkDownloadMegabytesPerSecond:0.0} MB/s", detailFont, white, barX + barWidth / 2f, downloadBarY + (barHeight - detailFont.Height) / 2f);
     }
 
-    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white, int width = 220, int barHeight = 4)
+    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white, int width = 220, int barHeight = 4, int valueOffset = 0)
     {
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         graphics.DrawString(label, detailFont, muted, x, y);
-        graphics.DrawString(value, detailFont, white, x + 108, y);
+        graphics.DrawString(value, detailFont, white, x + 108 + valueOffset, y);
         double clampedProgress = progress < 0 ? 0 : progress > 1 ? 1 : progress;
         graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 22, width, barHeight);
         graphics.FillRectangle(accent, x, y + 22, (float)(width * clampedProgress), barHeight);
@@ -870,6 +1216,150 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
         graphics.DrawString($"Clock {clock:0} MHz", detailFont, white, width / 2 - 64, height - 42);
         graphics.DrawString($"Power {power:0} W", detailFont, white, width / 2 - 58, height - 22);
+    }
+
+    private void DrawTwoByThreePanel(Graphics graphics, int width, int height, SensorSnapshot data)
+    {
+        int margin = Math.Max(6, width / 32);
+        int gap = Math.Max(6, width / 42);
+        int headerHeight = Math.Max(32, height / 10);
+        int contentTop = margin + headerHeight + gap;
+        int contentHeight = height - contentTop - margin;
+        int columnWidth = (width - margin * 2 - gap) / 2;
+        int topHeight = twoByThreeLayoutMode == TwoByThreeLayoutMode.Minimal
+            ? (contentHeight - gap * 2) / 3
+            : (int)(contentHeight * 0.58f);
+        int bottomTop = contentTop + topHeight + gap;
+        int bottomHeight = contentHeight - topHeight - gap;
+
+        DrawTwoByThreeHeader(graphics, width, headerHeight, margin);
+        bool combined = panelTarget == PanelTarget.Combined;
+        if (twoByThreeLayoutMode == TwoByThreeLayoutMode.Minimal)
+        {
+            int rowHeight = (contentHeight - gap * 2) / 3;
+            if (combined)
+            {
+                DrawTwoByThreeValueTile(graphics, new Rectangle(margin, contentTop, columnWidth, rowHeight), "CPU", $"{data.CpuLoadPercent:0}%", $"{data.CpuTemperatureCelsius:0} °C");
+                DrawTwoByThreeValueTile(graphics, new Rectangle(margin + columnWidth + gap, contentTop, columnWidth, rowHeight), "GPU", $"{data.GpuLoadPercent:0}%", $"{data.GpuTemperatureCelsius:0} °C");
+            }
+            else if (panelTarget == PanelTarget.Cpu)
+            {
+                DrawTwoByThreeValueTile(graphics, new Rectangle(margin, contentTop, width - margin * 2, rowHeight), "CPU", $"{data.CpuLoadPercent:0}%", $"{data.CpuTemperatureCelsius:0} °C");
+            }
+            else
+            {
+                DrawTwoByThreeValueTile(graphics, new Rectangle(margin, contentTop, width - margin * 2, rowHeight), "GPU", $"{data.GpuLoadPercent:0}%", $"{data.GpuTemperatureCelsius:0} °C");
+            }
+            DrawTwoByThreeValueTile(graphics, new Rectangle(margin, contentTop + rowHeight + gap, columnWidth, rowHeight), "RAM", $"{data.MemoryLoadPercent:0}%", $"{data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB");
+            DrawTwoByThreeValueTile(graphics, new Rectangle(margin + columnWidth + gap, contentTop + rowHeight + gap, columnWidth, rowHeight), "VRAM", $"{GetVramLoad(data):0}%", $"{data.GpuMemoryMegabytes / 1024:0.0} GB used");
+            DrawTwoByThreeValueTile(graphics, new Rectangle(margin, contentTop + (rowHeight + gap) * 2, columnWidth, rowHeight), "NETWORK", $"{data.NetworkDownloadMegabytesPerSecond:0.0}", "MB/s download");
+            DrawTwoByThreeValueTile(graphics, new Rectangle(margin + columnWidth + gap, contentTop + (rowHeight + gap) * 2, columnWidth, rowHeight), "FPS", $"{data.Fps:0}", "Frame rate");
+            return;
+        }
+
+        if (combined)
+        {
+            DrawTwoByThreeCoreTile(graphics, new Rectangle(margin, contentTop, columnWidth, topHeight), "CPU", data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz);
+            DrawTwoByThreeCoreTile(graphics, new Rectangle(margin + columnWidth + gap, contentTop, columnWidth, topHeight), "GPU", data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz);
+        }
+        else if (panelTarget == PanelTarget.Cpu)
+        {
+            DrawTwoByThreeCoreTile(graphics, new Rectangle(margin, contentTop, width - margin * 2, topHeight), "CPU", data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz);
+        }
+        else
+        {
+            DrawTwoByThreeCoreTile(graphics, new Rectangle(margin, contentTop, width - margin * 2, topHeight), "GPU", data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz);
+        }
+
+        if (twoByThreeLayoutMode == TwoByThreeLayoutMode.Gauges)
+        {
+            DrawTwoByThreeValueTile(graphics, new Rectangle(margin, bottomTop, columnWidth, bottomHeight), "RAM", $"{data.MemoryLoadPercent:0}%", $"{data.MemoryUsedGigabytes:0.0} / {data.MemoryTotalGigabytes:0} GB");
+            DrawTwoByThreeValueTile(graphics, new Rectangle(margin + columnWidth + gap, bottomTop, columnWidth, bottomHeight), "VRAM", $"{GetVramLoad(data):0}%", $"{data.GpuMemoryMegabytes / 1024:0.0} / {data.GpuMemoryTotalMegabytes / 1024:0} GB");
+            return;
+        }
+
+        int bottomColumnWidth = (width - margin * 2 - gap * 2) / 3;
+        DrawTwoByThreeValueTile(graphics, new Rectangle(margin, bottomTop, bottomColumnWidth, bottomHeight), "RAM", $"{data.MemoryLoadPercent:0}%", $"{data.MemoryUsedGigabytes:0.0} GB");
+        DrawTwoByThreeValueTile(graphics, new Rectangle(margin + bottomColumnWidth + gap, bottomTop, bottomColumnWidth, bottomHeight), "NETWORK", $"{data.NetworkDownloadMegabytesPerSecond:0.0}", "MB/s down");
+        DrawTwoByThreeValueTile(graphics, new Rectangle(margin + (bottomColumnWidth + gap) * 2, bottomTop, bottomColumnWidth, bottomHeight), "VRAM", $"{GetVramLoad(data):0}%", "GPU memory");
+    }
+
+    private void DrawTwoByThreeHeader(Graphics graphics, int width, int headerHeight, int margin)
+    {
+        using Pen border = new(accentColor, 2);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush timeBrush = new SolidBrush(timeColor);
+        using Font titleFont = new("Segoe UI", Math.Max(9, headerHeight / 3), FontStyle.Bold);
+        using Font timeFont = new("Segoe UI", Math.Max(10, headerHeight / 3), FontStyle.Bold);
+        graphics.DrawRectangle(border, margin, margin, width - margin * 2, headerHeight);
+        graphics.DrawString("HWiNFO", titleFont, white, margin + 8, margin + 5);
+        TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        string currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone).ToString("HH:mm:ss");
+        SizeF timeSize = graphics.MeasureString(currentTime, timeFont);
+        graphics.DrawString(currentTime, timeFont, timeBrush, (width - timeSize.Width) / 2, margin + 5);
+    }
+
+    private void DrawTwoByThreeCoreTile(Graphics graphics, Rectangle bounds, string label, double load, double temperature, double clock)
+    {
+        DrawCardFrame(graphics, bounds, accentColor);
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        int radius = Math.Max(40, Math.Min(bounds.Height / 4, bounds.Width / 6));
+        using Font labelFont = new("Segoe UI", Math.Max(9, bounds.Height / 13), FontStyle.Bold);
+        using Font valueFont = new("Segoe UI", Math.Max(14, radius * 0.58f), FontStyle.Bold);
+        using Font detailFont = new("Segoe UI", Math.Max(8, bounds.Height / 16));
+        graphics.DrawString(label, labelFont, white, bounds.X + 10, bounds.Y + 8);
+        bool singleTarget = panelTarget != PanelTarget.Combined;
+        Point loadCenter = new(singleTarget ? bounds.X + radius + 54 : bounds.Right - radius - 54, bounds.Y + radius + 48);
+        DrawGauge(graphics, loadCenter, radius, load, GetGaugeColor(load), 18);
+        DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
+        DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, loadCenter.Y + radius - 13);
+        if (singleTarget)
+        {
+            Point temperatureCenter = new(bounds.Right - radius - 54, bounds.Y + radius + 48);
+            DrawGauge(graphics, temperatureCenter, radius, temperature, GetTemperatureGaugeColor(temperature), 18);
+            DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
+            DrawCenteredText(graphics, "Temp", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + radius - 13);
+        }
+        int metricX = bounds.X + 10;
+        int metricWidth = bounds.Width - 20;
+        int metricStep = detailFont.Height + 8;
+        int metricsTop = bounds.Bottom - metricStep * 2 - 10;
+        DrawSmallMetric(graphics, metricX, metricsTop, metricWidth, "Temp", $"{temperature:0} °C", temperature / 100, GetTemperatureGaugeColor(temperature), detailFont, white, muted);
+        DrawSmallMetric(graphics, metricX, metricsTop + metricStep, metricWidth, "Clock", $"{clock:0} MHz", clock / 6000, accentColor, detailFont, white, muted);
+    }
+
+    private void DrawTwoByThreeValueTile(Graphics graphics, Rectangle bounds, string title, string value, string detail)
+    {
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        using Font titleFont = new("Segoe UI", Math.Max(9, bounds.Height / 10), FontStyle.Bold);
+        using Font valueFont = new("Segoe UI", Math.Max(15, bounds.Height / 4), FontStyle.Bold);
+        using Font detailFont = new("Segoe UI", Math.Max(8, bounds.Height / 13));
+        DrawCardFrame(graphics, bounds, accentColor);
+        graphics.DrawString(title, titleFont, white, bounds.X + 8, bounds.Y + 7);
+        graphics.DrawString(value, valueFont, white, bounds.X + 8, bounds.Y + bounds.Height / 3);
+        graphics.DrawString(detail, detailFont, muted, new RectangleF(bounds.X + 8, bounds.Bottom - detailFont.Height - 8, bounds.Width - 16, detailFont.Height), new StringFormat { Trimming = StringTrimming.EllipsisCharacter });
+    }
+
+    private static double GetVramLoad(SensorSnapshot data)
+    {
+        double total = data.GpuMemoryTotalMegabytes > 0 ? data.GpuMemoryTotalMegabytes : 24576;
+        return data.GpuMemoryMegabytes / total * 100;
+    }
+
+    private static void DrawSmallMetric(Graphics graphics, int x, int y, int width, string label, string value, double progress, Color progressColor, Font font, Brush white, Brush muted)
+    {
+        if (width <= 8)
+            return;
+
+        graphics.DrawString(label, font, muted, x, y);
+        SizeF valueSize = graphics.MeasureString(value, font);
+        graphics.DrawString(value, font, white, x + width - valueSize.Width, y);
+        int barY = y + font.Height + 2;
+        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, barY, width, 4);
+        float clamped = (float)Math.Max(0, Math.Min(1, progress));
+        graphics.FillRectangle(new SolidBrush(progressColor), x, barY, width * clamped, 4);
     }
 
     private void DrawFiveByOnePanel(Graphics graphics, int width, int height, SensorSnapshot data, bool showTemperatureGauge)
@@ -977,11 +1467,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
     private static void DrawGauge(Graphics graphics, Point center, int radius, double value, Color accent, int strokeWidth = 10)
     {
+        float[] transform = graphics.Transform.Elements;
+        float horizontalRadius = radius;
+        if (Math.Abs(transform[0]) > 0.001f && Math.Abs(transform[3] - transform[0]) > 0.001f)
+            horizontalRadius = radius * transform[3] / transform[0];
+
         using Pen backgroundPen = new(Color.FromArgb(70, 78, 88), strokeWidth);
         using Pen valuePen = new(accent, strokeWidth);
-        graphics.DrawArc(backgroundPen, center.X - radius, center.Y - radius, radius * 2, radius * 2, 135, 270);
+        graphics.DrawArc(backgroundPen, center.X - horizontalRadius, center.Y - radius, horizontalRadius * 2, radius * 2, 135, 270);
         double clampedValue = value < 0 ? 0 : value > 100 ? 100 : value;
-        graphics.DrawArc(valuePen, center.X - radius, center.Y - radius, radius * 2, radius * 2, 135, (float)(270 * clampedValue / 100));
+        graphics.DrawArc(valuePen, center.X - horizontalRadius, center.Y - radius, horizontalRadius * 2, radius * 2, 135, (float)(270 * clampedValue / 100));
     }
 
     private static void DrawCardFrame(Graphics graphics, Rectangle bounds, Color accent)

@@ -2,7 +2,9 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Collections.Generic;
 using System.Linq;
 using WigiDashWidgetFramework;
@@ -62,43 +64,26 @@ public sealed class HwinfoPanelSettings : UserControl
             RebuildRelevantSensorSelectors(sensorPanel);
         };
         targetColumn.Children.Add(targetSelector);
-        targetColumn.Children.Add(new TextBlock { Text = "RAM-Gauge", Margin = new Thickness(0, 8, 0, 4) });
-        ComboBox ramGaugeAlignmentSelector = new()
+
+        if (widget.WidgetSize.Width == 2 && widget.WidgetSize.Height == 3)
         {
-            Width = 126,
-            ItemsSource = new[] { "Rechts", "Links" },
-            SelectedIndex = widget.RamGaugeAlignment == MemoryGaugeAlignment.Left ? 1 : 0,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            HorizontalContentAlignment = HorizontalAlignment.Left
-        };
-        ramGaugeAlignmentSelector.SelectionChanged += (_, _) =>
-        {
-            if (ramGaugeAlignmentSelector.SelectedIndex >= 0)
-                widget.SetRamGaugeAlignment((MemoryGaugeAlignment)ramGaugeAlignmentSelector.SelectedIndex);
-        };
-        targetColumn.Children.Add(ramGaugeAlignmentSelector);
-        targetColumn.Children.Add(new Border
-        {
-            BorderBrush = System.Windows.Media.Brushes.Gray,
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            Margin = new Thickness(0, 10, 0, 6)
-        });
-        StackPanel networkScaleRow = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        networkScaleRow.Children.Add(new TextBlock { Text = "Netzwerk-Skala (MB/s)", Width = 135, VerticalAlignment = VerticalAlignment.Center });
-        TextBox networkScaleInput = new()
-        {
-            Width = 90,
-            Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##"),
-            HorizontalContentAlignment = HorizontalAlignment.Center
-        };
-        networkScaleInput.LostFocus += (_, _) =>
-        {
-            if (double.TryParse(networkScaleInput.Text, out double scale))
-                widget.SetNetworkScale(scale);
-            networkScaleInput.Text = widget.NetworkScaleMegabytesPerSecond.ToString("0.##");
-        };
-        networkScaleRow.Children.Add(networkScaleInput);
-        targetColumn.Children.Add(networkScaleRow);
+            targetColumn.Children.Add(new TextBlock { Text = "2x3-Layout", Margin = new Thickness(0, 12, 0, 4) });
+            ComboBox twoByThreeLayoutSelector = new()
+            {
+                Width = 126,
+                ItemsSource = new[] { "Ausgewogen", "Gauges", "Minimal" },
+                SelectedIndex = (int)widget.TwoByThreeLayoutMode,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                HorizontalContentAlignment = HorizontalAlignment.Left
+            };
+            twoByThreeLayoutSelector.SelectionChanged += (_, _) =>
+            {
+                if (twoByThreeLayoutSelector.SelectedIndex >= 0)
+                    widget.SetTwoByThreeLayoutMode((TwoByThreeLayoutMode)twoByThreeLayoutSelector.SelectedIndex);
+            };
+            targetColumn.Children.Add(twoByThreeLayoutSelector);
+        }
+
         mainOptions.Children.Add(targetColumn);
 
         if (widget.WidgetSize.Width == 1 && widget.WidgetSize.Height == 1)
@@ -123,7 +108,35 @@ public sealed class HwinfoPanelSettings : UserControl
         colorSelector.SelectedIndex = ColorIndex(widget.AccentColor);
         colorSelector.SelectionChanged += ColorSelector_SelectionChanged;
         accentColumn.Children.Add(colorSelector);
-        accentColumn.Children.Add(new TextBlock { Text = "VRAM-Gauge", Margin = new Thickness(0, 8, 0, 4) });
+        mainOptions.Children.Add(accentColumn);
+        panel.Children.Add(mainOptions);
+        panel.Children.Add(new Border
+        {
+            BorderBrush = System.Windows.Media.Brushes.Gray,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 18, 0, 10)
+        });
+        StackPanel memoryGaugeRow = new() { Orientation = Orientation.Horizontal };
+        StackPanel ramGaugeColumn = new() { Width = 230, Margin = new Thickness(0, 0, 8, 0) };
+        ramGaugeColumn.Children.Add(new TextBlock { Text = "RAM-Gauge", Margin = new Thickness(0, 0, 0, 4) });
+        ComboBox ramGaugeAlignmentSelector = new()
+        {
+            Width = 126,
+            ItemsSource = new[] { "Rechts", "Links" },
+            SelectedIndex = widget.RamGaugeAlignment == MemoryGaugeAlignment.Left ? 1 : 0,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            HorizontalContentAlignment = HorizontalAlignment.Left
+        };
+        ramGaugeAlignmentSelector.SelectionChanged += (_, _) =>
+        {
+            if (ramGaugeAlignmentSelector.SelectedIndex >= 0)
+                widget.SetRamGaugeAlignment((MemoryGaugeAlignment)ramGaugeAlignmentSelector.SelectedIndex);
+        };
+        ramGaugeColumn.Children.Add(ramGaugeAlignmentSelector);
+        memoryGaugeRow.Children.Add(ramGaugeColumn);
+        StackPanel vramGaugeColumn = new() { Width = 140 };
+        vramGaugeColumn.Children.Add(new TextBlock { Text = "VRAM-Gauge", Margin = new Thickness(0, 0, 0, 4) });
         ComboBox vramGaugeAlignmentSelector = new()
         {
             Width = 126,
@@ -137,9 +150,97 @@ public sealed class HwinfoPanelSettings : UserControl
             if (vramGaugeAlignmentSelector.SelectedIndex >= 0)
                 widget.SetVramGaugeAlignment((MemoryGaugeAlignment)vramGaugeAlignmentSelector.SelectedIndex);
         };
-        accentColumn.Children.Add(vramGaugeAlignmentSelector);
-        mainOptions.Children.Add(accentColumn);
-        panel.Children.Add(mainOptions);
+        vramGaugeColumn.Children.Add(vramGaugeAlignmentSelector);
+        memoryGaugeRow.Children.Add(vramGaugeColumn);
+        panel.Children.Add(memoryGaugeRow);
+        Border networkScaleTopSeparator = new()
+        {
+            BorderBrush = System.Windows.Media.Brushes.Gray,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 18, 0, 10)
+        };
+        panel.Children.Add(networkScaleTopSeparator);
+        StackPanel networkScaleRow = new() { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        StackPanel uploadScaleColumn = new() { Width = 230, Orientation = Orientation.Horizontal };
+        uploadScaleColumn.Children.Add(new TextBlock { Text = "Upload (MB/s)", Width = 105, VerticalAlignment = VerticalAlignment.Center });
+        TextBox uploadScaleInput = new()
+        {
+            Width = 90,
+            Text = widget.UploadNetworkScaleMegabytesPerSecond.ToString("0.##"),
+            HorizontalContentAlignment = HorizontalAlignment.Center
+        };
+        uploadScaleInput.LostFocus += (_, _) =>
+        {
+            if (double.TryParse(uploadScaleInput.Text, out double scale))
+                widget.SetUploadNetworkScale(scale);
+            uploadScaleInput.Text = widget.UploadNetworkScaleMegabytesPerSecond.ToString("0.##");
+        };
+        uploadScaleColumn.Children.Add(uploadScaleInput);
+        networkScaleRow.Children.Add(uploadScaleColumn);
+        StackPanel downloadScaleColumn = new() { Width = 230, Orientation = Orientation.Horizontal };
+        downloadScaleColumn.Children.Add(new TextBlock { Text = "Download (MB/s)", Width = 115, VerticalAlignment = VerticalAlignment.Center });
+        TextBox downloadScaleInput = new()
+        {
+            Width = 90,
+            Text = widget.DownloadNetworkScaleMegabytesPerSecond.ToString("0.##"),
+            HorizontalContentAlignment = HorizontalAlignment.Center
+        };
+        downloadScaleInput.LostFocus += (_, _) =>
+        {
+            if (double.TryParse(downloadScaleInput.Text, out double scale))
+                widget.SetDownloadNetworkScale(scale);
+            downloadScaleInput.Text = widget.DownloadNetworkScaleMegabytesPerSecond.ToString("0.##");
+        };
+        downloadScaleColumn.Children.Add(downloadScaleInput);
+        networkScaleRow.Children.Add(downloadScaleColumn);
+        panel.Children.Add(networkScaleRow);
+        panel.Children.Add(new Border
+        {
+            BorderBrush = System.Windows.Media.Brushes.Gray,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 18, 0, 14)
+        });
+        panel.Children.Add(new TextBlock { Text = "Aktualisierungsintervall", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 8) });
+        Grid intervalControlRow = new() { MinHeight = 32 };
+        intervalControlRow.ColumnDefinitions.Add(new ColumnDefinition());
+        intervalControlRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(82) });
+        intervalSlider = new Slider
+        {
+            Minimum = 100,
+            Maximum = 2000,
+            TickFrequency = 100,
+            IsSnapToTickEnabled = true,
+            Value = widget.UpdateIntervalMilliseconds,
+            Height = 28,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0)
+        };
+        intervalSlider.ValueChanged += IntervalSlider_ValueChanged;
+        intervalControlRow.Children.Add(intervalSlider);
+        Border intervalValueBadge = new()
+        {
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(6, 4, 6, 4),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        intervalValue = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 75, 115)) };
+        intervalValueBadge.Child = intervalValue;
+        Grid.SetColumn(intervalValueBadge, 1);
+        intervalControlRow.Children.Add(intervalValueBadge);
+        panel.Children.Add(intervalControlRow);
+        Grid intervalRangeLabels = new() { Margin = new Thickness(0, 0, 82, 0) };
+        intervalRangeLabels.ColumnDefinitions.Add(new ColumnDefinition());
+        intervalRangeLabels.ColumnDefinitions.Add(new ColumnDefinition());
+        intervalRangeLabels.Children.Add(new TextBlock { Text = "100 ms", FontSize = 10, Foreground = System.Windows.Media.Brushes.Gray });
+        TextBlock intervalMaximumLabel = new() { Text = "2000 ms", FontSize = 10, Foreground = System.Windows.Media.Brushes.Gray, HorizontalAlignment = HorizontalAlignment.Right };
+        Grid.SetColumn(intervalMaximumLabel, 1);
+        intervalRangeLabels.Children.Add(intervalMaximumLabel);
+        panel.Children.Add(intervalRangeLabels);
 
         Grid gaugeOptions = new() { Margin = new Thickness(0, 12, 0, 0) };
         gaugeOptions.ColumnDefinitions.Add(new ColumnDefinition());
@@ -234,6 +335,7 @@ public sealed class HwinfoPanelSettings : UserControl
         gaugeOptions.Children.Add(highTemperatureColumn);
         Expander gaugeColorExpander = new()
         {
+            Template = CreateStyledExpanderTemplate(),
             Header = new Border
             {
                 Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
@@ -252,19 +354,11 @@ public sealed class HwinfoPanelSettings : UserControl
         };
         panel.Children.Add(new Border
         {
-            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
-            BorderThickness = new Thickness(1),
-            Margin = new Thickness(0, 12, 0, 0),
-            Child = gaugeColorExpander
+            BorderBrush = System.Windows.Media.Brushes.Gray,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 18, 0, 12)
         });
-
-        panel.Children.Add(new TextBlock { Text = "Aktualisierungsintervall", Margin = new Thickness(0, 16, 0, 4) });
-        intervalSlider = new Slider { Minimum = 100, Maximum = 2000, TickFrequency = 100, IsSnapToTickEnabled = true, Value = widget.UpdateIntervalMilliseconds };
-        intervalSlider.ValueChanged += IntervalSlider_ValueChanged;
-        panel.Children.Add(intervalSlider);
-        intervalValue = new TextBlock { Margin = new Thickness(0, 4, 0, 0) };
-        panel.Children.Add(intervalValue);
-
         Dictionary<string, string> timeZoneOptions = new()
         {
             ["Lokale Zeit"] = TimeZoneInfo.Local.Id,
@@ -316,7 +410,6 @@ public sealed class HwinfoPanelSettings : UserControl
                 widget.SetHeaderTouchAction((HeaderTouchAction)headerActionSelector.SelectedIndex);
         };
         headerActionColumn.Children.Add(headerActionSelector);
-        headerOptions.Children.Add(headerActionColumn);
 
         StackPanel externalActionColumn = new() { Width = 180 };
         externalActionColumn.Children.Add(new TextBlock { Text = "Externe Aktion", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
@@ -335,10 +428,7 @@ public sealed class HwinfoPanelSettings : UserControl
             widget.SetHeaderExternalAction(externalActionSelector.SelectedValue is Guid actionId ? actionId : null);
         };
         externalActionColumn.Children.Add(externalActionSelector);
-        headerOptions.Children.Add(externalActionColumn);
-        panel.Children.Add(headerOptions);
 
-        StackPanel timeOptions = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
         StackPanel timeSizeColumn = new() { Width = 145, Margin = new Thickness(0, 0, 8, 0) };
         timeSizeColumn.Children.Add(new TextBlock { Text = "Uhrgröße", Margin = new Thickness(0, 0, 0, 4) });
         ComboBox timeSizeSelector = new()
@@ -356,7 +446,7 @@ public sealed class HwinfoPanelSettings : UserControl
                 widget.SetTimeFontSize(sizes[timeSizeSelector.SelectedIndex]);
         };
         timeSizeColumn.Children.Add(timeSizeSelector);
-        timeOptions.Children.Add(timeSizeColumn);
+        headerOptions.Children.Add(timeSizeColumn);
 
         StackPanel timeColorColumn = new() { Width = 145 };
         timeColorColumn.Children.Add(new TextBlock { Text = "Uhrfarbe", Margin = new Thickness(0, 0, 0, 4) });
@@ -367,11 +457,97 @@ public sealed class HwinfoPanelSettings : UserControl
                 widget.SetTimeColor(TimeColor(timeColorSelector.SelectedIndex));
         };
         timeColorColumn.Children.Add(timeColorSelector);
-        timeOptions.Children.Add(timeColorColumn);
-        panel.Children.Add(timeOptions);
+        headerOptions.Children.Add(timeColorColumn);
+        panel.Children.Add(headerOptions);
+        StackPanel touchOptions = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 8, 8, 8) };
+        touchOptions.Children.Add(headerActionColumn);
+        touchOptions.Children.Add(externalActionColumn);
+        Expander touchExpander = new()
+        {
+            Template = CreateStyledExpanderTemplate(),
+            Header = new Border
+            {
+                Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(8, 5, 8, 5),
+                Child = new TextBlock
+                {
+                    Text = "Touch-Funktionen",
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 75, 115))
+                }
+            },
+            IsExpanded = true,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Content = touchOptions
+        };
+        panel.Children.Add(new Border
+        {
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 12, 0, 0),
+            Child = touchExpander
+        });
+
+        if (widget.SupportsPages)
+        {
+            StackPanel pageOptions = new() { Margin = new Thickness(8, 8, 8, 8) };
+            pageOptions.Children.Add(new TextBlock { Text = "Startseite", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
+            ComboBox startPageSelector = new()
+            {
+                Width = 137,
+                ItemsSource = new[] { "Hardware", "Home" },
+                SelectedIndex = (int)widget.StartPage,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                HorizontalContentAlignment = HorizontalAlignment.Left
+            };
+            startPageSelector.SelectionChanged += (_, _) =>
+            {
+                if (startPageSelector.SelectedIndex >= 0)
+                    widget.SetStartPage((PanelPage)startPageSelector.SelectedIndex);
+            };
+            pageOptions.Children.Add(startPageSelector);
+
+            if (widget.SupportsPages)
+            {
+                pageOptions.Children.Add(new TextBlock { Text = "Home-Kacheln", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 12, 0, 4) });
+                string[] tileLabels = { "CPU", "GPU", "RAM", "VRAM", "Netzwerk", "Lüfter", "FPS", "Leer" };
+                for (int index = 0; index < 4; index++)
+                {
+                    int tileIndex = index;
+                    StackPanel tileRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+                    tileRow.Children.Add(new TextBlock { Text = $"Slot {index + 1}", Width = 48, VerticalAlignment = VerticalAlignment.Center });
+                    ComboBox tileSelector = new()
+                    {
+                        Width = 137,
+                        ItemsSource = tileLabels,
+                        SelectedIndex = (int)widget.GetHomeTileType(index),
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        HorizontalContentAlignment = HorizontalAlignment.Left
+                    };
+                    tileSelector.SelectionChanged += (_, _) =>
+                    {
+                        if (tileSelector.SelectedIndex >= 0)
+                            widget.SetHomeTileType(tileIndex, (HomeTileType)tileSelector.SelectedIndex);
+                    };
+                    tileRow.Children.Add(tileSelector);
+                    pageOptions.Children.Add(tileRow);
+                }
+            }
+
+            panel.Children.Add(CreateSectionExpander("Seiten", pageOptions, true));
+        }
+        panel.Children.Add(new Border
+        {
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 12, 0, 0),
+            Child = gaugeColorExpander
+        });
 
         Expander sensorExpander = new()
         {
+            Template = CreateStyledExpanderTemplate(),
             Header = new Border
             {
                 Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
@@ -401,8 +577,186 @@ public sealed class HwinfoPanelSettings : UserControl
         updateButton.Click += UpdateButton_Click;
         panel.Children.Add(updateButton);
 
+        List<UIElement> settingsSections = panel.Children.Cast<UIElement>().ToList();
+        StackPanel generalPage = new() { Margin = new Thickness(4) };
+        StackPanel hardwarePage = new() { Margin = new Thickness(4) };
+        StackPanel homePage = new() { Margin = new Thickness(4) };
+        int sectionOffset = widget.WidgetSize.Width == 1 && widget.WidgetSize.Height == 1 ? 1 : 0;
+
+        void MoveSection(StackPanel target, int index)
+        {
+            if (index >= 0 && index < settingsSections.Count)
+                target.Children.Add(settingsSections[index]);
+        }
+
+        panel.Children.Clear();
+
+        // Allgemeine Optionen: Aktualisierung, Uhr, Touch und manuelles Aktualisieren.
+        MoveSection(generalPage, sectionOffset + 6);
+        MoveSection(generalPage, sectionOffset + 7);
+        MoveSection(generalPage, sectionOffset + 8);
+        MoveSection(generalPage, sectionOffset + 9);
+        MoveSection(generalPage, sectionOffset + 10);
+        MoveSection(generalPage, sectionOffset + 11);
+        MoveSection(generalPage, sectionOffset + 12);
+        MoveSection(generalPage, sectionOffset + (widget.SupportsPages ? 16 : 15));
+
+        // Hardware-Seite: Anzeigeziel, Speicher-/Netzwerkoptionen, Farben und Sensorbindung.
+        MoveSection(hardwarePage, sectionOffset + 1);
+        MoveSection(hardwarePage, sectionOffset + 2);
+        MoveSection(hardwarePage, sectionOffset + 3);
+        MoveSection(hardwarePage, sectionOffset + 4);
+        MoveSection(hardwarePage, sectionOffset + 5);
+        MoveSection(hardwarePage, sectionOffset + (widget.SupportsPages ? 14 : 13));
+        MoveSection(hardwarePage, sectionOffset + (widget.SupportsPages ? 15 : 14));
+
+        if (widget.SupportsPages)
+            MoveSection(homePage, sectionOffset + 13);
+
+        TabControl settingsTabs = new() { Margin = new Thickness(0, 4, 0, 0) };
+        settingsTabs.Items.Add(new TabItem { Header = "Allgemein", Content = generalPage });
+        settingsTabs.Items.Add(new TabItem { Header = "Hardware", Content = hardwarePage });
+        if (widget.SupportsPages)
+            settingsTabs.Items.Add(new TabItem { Header = "Home", Content = homePage });
+
+        panel.Children.Clear();
+        panel.Children.Add(settingsSections[0]);
+        panel.Children.Add(settingsTabs);
+
         Content = panel;
         UpdateIntervalText();
+    }
+
+    private static Border CreateSectionExpander(string title, UIElement content, bool isExpanded)
+    {
+        Expander expander = new()
+        {
+            Template = CreateStyledExpanderTemplate(),
+            Header = new Border
+            {
+                Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(225, 238, 250)),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(8, 5, 8, 5),
+                Child = new TextBlock
+                {
+                    Text = title,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 75, 115))
+                }
+            },
+            IsExpanded = isExpanded,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Content = content
+        };
+        return new Border
+        {
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 12, 0, 0),
+            Child = expander
+        };
+    }
+
+    private static ControlTemplate CreateStyledExpanderTemplate()
+    {
+        ControlTemplate template = new(typeof(Expander));
+        FrameworkElementFactory root = new(typeof(DockPanel));
+        root.SetValue(DockPanel.LastChildFillProperty, true);
+
+        FrameworkElementFactory headerButton = new(typeof(ToggleButton));
+        headerButton.Name = "HeaderSite";
+        headerButton.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+        headerButton.SetValue(DockPanel.DockProperty, Dock.Top);
+        headerButton.SetValue(ToggleButton.BackgroundProperty, Brushes.Transparent);
+        headerButton.SetValue(ToggleButton.BorderThicknessProperty, new Thickness(0));
+        headerButton.SetValue(ToggleButton.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch);
+        headerButton.SetValue(ToggleButton.PaddingProperty, new Thickness(0));
+        headerButton.SetBinding(ToggleButton.IsCheckedProperty, new Binding("IsExpanded")
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent),
+            Mode = BindingMode.TwoWay
+        });
+
+        FrameworkElementFactory headerGrid = new(typeof(Grid));
+        headerGrid.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+        headerGrid.SetBinding(FrameworkElement.WidthProperty, new Binding("ActualWidth") { ElementName = "HeaderSite" });
+        FrameworkElementFactory headerContent = new(typeof(ContentPresenter));
+        headerContent.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Stretch);
+        headerContent.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 32, 0));
+        headerContent.SetBinding(ContentPresenter.ContentProperty, new Binding("Header")
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent)
+        });
+        headerContent.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("HeaderTemplate")
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent)
+        });
+        headerGrid.AppendChild(headerContent);
+
+        FrameworkElementFactory arrow = new(typeof(Path));
+        arrow.Name = "Arrow";
+        arrow.SetValue(Path.DataProperty, Geometry.Parse("M 0 0 L 8 0 L 4 4 Z"));
+        arrow.SetValue(Path.FillProperty, new SolidColorBrush(System.Windows.Media.Color.FromRgb(70, 85, 100)));
+        arrow.SetValue(Path.StrokeProperty, new SolidColorBrush(System.Windows.Media.Color.FromRgb(70, 85, 100)));
+        arrow.SetValue(Path.StrokeThicknessProperty, 1.0);
+        arrow.SetValue(Path.WidthProperty, 12.0);
+        arrow.SetValue(Path.HeightProperty, 8.0);
+        arrow.SetValue(Path.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+        arrow.SetValue(Path.VerticalAlignmentProperty, VerticalAlignment.Center);
+        arrow.SetValue(Path.MarginProperty, new Thickness(0, 0, 10, 0));
+        arrow.SetValue(UIElement.IsHitTestVisibleProperty, false);
+        arrow.SetValue(Panel.ZIndexProperty, 1);
+        arrow.SetValue(Path.RenderTransformOriginProperty, new Point(0.5, 0.5));
+        arrow.SetValue(Path.RenderTransformProperty, new RotateTransform(0));
+        headerGrid.AppendChild(arrow);
+
+        FrameworkElementFactory accentBar = new(typeof(Border));
+        accentBar.Name = "AccentBar";
+        accentBar.SetValue(Border.BackgroundProperty, new SolidColorBrush(System.Windows.Media.Color.FromRgb(45, 145, 230)));
+        accentBar.SetValue(FrameworkElement.WidthProperty, 4.0);
+        accentBar.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+        accentBar.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Stretch);
+        accentBar.SetValue(UIElement.OpacityProperty, 0.0);
+        accentBar.SetValue(Panel.ZIndexProperty, 2);
+        headerGrid.AppendChild(accentBar);
+        headerButton.AppendChild(headerGrid);
+        root.AppendChild(headerButton);
+
+        FrameworkElementFactory content = new(typeof(ContentPresenter));
+        content.Name = "ExpandSite";
+        content.SetValue(ContentPresenter.VisibilityProperty, Visibility.Collapsed);
+        content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content")
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent)
+        });
+        content.SetBinding(ContentPresenter.ContentTemplateProperty, new Binding("ContentTemplate")
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent)
+        });
+        root.AppendChild(content);
+        template.VisualTree = root;
+
+        Trigger expandedTrigger = new()
+        {
+            Property = Expander.IsExpandedProperty,
+            Value = true
+        };
+        expandedTrigger.Setters.Add(new Setter(ContentPresenter.VisibilityProperty, Visibility.Visible, "ExpandSite"));
+        expandedTrigger.Setters.Add(new Setter(Path.RenderTransformProperty, new RotateTransform(180), "Arrow"));
+        template.Triggers.Add(expandedTrigger);
+
+        Trigger hoverTrigger = new()
+        {
+            SourceName = "HeaderSite",
+            Property = UIElement.IsMouseOverProperty,
+            Value = true
+        };
+        SolidColorBrush hoverBlue = new(System.Windows.Media.Color.FromRgb(45, 145, 230));
+        hoverTrigger.Setters.Add(new Setter(Path.FillProperty, hoverBlue, "Arrow"));
+        hoverTrigger.Setters.Add(new Setter(Path.StrokeProperty, hoverBlue, "Arrow"));
+        hoverTrigger.Setters.Add(new Setter(UIElement.OpacityProperty, 1.0, "AccentBar"));
+        template.Triggers.Add(hoverTrigger);
+        return template;
     }
 
     private void ColorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)

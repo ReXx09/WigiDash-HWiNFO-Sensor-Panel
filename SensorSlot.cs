@@ -14,6 +14,13 @@ public enum FiveByFourGaugeMode
     Combined
 }
 
+public enum TwoByThreeLayoutMode
+{
+    Balanced,
+    Gauges,
+    Minimal
+}
+
 public enum MemoryGaugeAlignment
 {
     Right,
@@ -26,6 +33,24 @@ public enum HeaderTouchAction
     ToggleDisplay,
     Refresh,
     ExternalAction
+}
+
+public enum PanelPage
+{
+    Hardware,
+    Home
+}
+
+public enum HomeTileType
+{
+    Cpu,
+    Gpu,
+    Ram,
+    Vram,
+    Network,
+    Fans,
+    Fps,
+    Empty
 }
 
 public enum SensorSlot
