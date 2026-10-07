@@ -4,7 +4,8 @@ public enum PanelTarget
 {
     Combined,
     Cpu,
-    Gpu
+    Gpu,
+    Storage
 }
 
 public enum FiveByFourGaugeMode
@@ -50,6 +51,19 @@ public enum HomeTileType
     Network,
     Fans,
     Fps,
+    Empty,
+    CustomAction,
+    WebLink
+}
+
+public enum HomeButtonTarget
+{
+    Home,
+    Hardware,
+    MemoryNetwork,
+    Actions,
+    Info,
+    Discord,
     Empty
 }
 
@@ -70,5 +84,13 @@ public enum SensorSlot
     MemoryUsed,
     MemoryClock,
     NetworkUpload,
-    NetworkDownload
+    NetworkDownload,
+    DriveCTemperature,
+    DriveDTemperature,
+    DriveETemperature,
+    DriveFTemperature,
+    DriveGTemperature,
+    DriveHTemperature,
+    DriveITemperature,
+    DriveJTemperature
 }

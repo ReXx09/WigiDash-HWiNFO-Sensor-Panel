@@ -1,0 +1,13 @@
+bin/
+obj/
+.vs/
+.vscode/
+dist/
+.nuget/
+.dotnet-cli/
+.dotnet-home/
+.appdata/
+*.log
+*.user
+*.suo
+*.pdb

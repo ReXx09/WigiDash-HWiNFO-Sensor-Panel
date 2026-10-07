@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Win32;
 using WigiDashWidgetFramework;
 using DrawingColor = System.Drawing.Color;
 
@@ -52,6 +53,8 @@ public sealed class HwinfoPanelSettings : UserControl
             targetSelector.Items.Add("Kombiniert");
             targetSelector.Items.Add("CPU");
             targetSelector.Items.Add("GPU");
+            if (widget.WidgetSize.Width == 2 && widget.WidgetSize.Height == 2)
+                targetSelector.Items.Add("Storage");
             targetSelector.SelectedIndex = (int)widget.PanelTarget;
         }
         StackPanel sensorPanel = new() { Margin = new Thickness(0, 8, 0, 0) };
@@ -511,7 +514,7 @@ public sealed class HwinfoPanelSettings : UserControl
             if (widget.SupportsPages)
             {
                 pageOptions.Children.Add(new TextBlock { Text = "Home-Kacheln", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 12, 0, 4) });
-                string[] tileLabels = { "CPU", "GPU", "RAM", "VRAM", "Netzwerk", "Lüfter", "FPS", "Leer" };
+                string[] tileLabels = { "CPU", "GPU", "RAM", "VRAM", "Netzwerk", "Lüfter", "FPS", "Leer", "Aktion", "Weblink" };
                 for (int index = 0; index < 4; index++)
                 {
                     int tileIndex = index;
@@ -525,14 +528,186 @@ public sealed class HwinfoPanelSettings : UserControl
                         HorizontalAlignment = HorizontalAlignment.Left,
                         HorizontalContentAlignment = HorizontalAlignment.Left
                     };
+                    ComboBox actionSelector = new()
+                    {
+                        Width = 190,
+                        ItemsSource = widget.AvailableExternalActions,
+                        DisplayMemberPath = "Value",
+                        SelectedValuePath = "Key",
+                        SelectedValue = widget.GetHomeTileActionId(index),
+                        Margin = new Thickness(8, 0, 0, 0),
+                        Visibility = (HomeTileType)tileSelector.SelectedIndex == HomeTileType.CustomAction ? Visibility.Visible : Visibility.Collapsed,
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        HorizontalContentAlignment = HorizontalAlignment.Left
+                    };
+                    TextBox linkInput = new()
+                    {
+                        Width = 190,
+                        Text = widget.GetHomeTileLink(index),
+                        Margin = new Thickness(8, 0, 0, 0),
+                        Visibility = (HomeTileType)tileSelector.SelectedIndex == HomeTileType.WebLink ? Visibility.Visible : Visibility.Collapsed,
+                        HorizontalContentAlignment = HorizontalAlignment.Left
+                    };
+                    TextBox labelInput = new()
+                    {
+                        Width = 137,
+                        Text = widget.GetHomeTileLabel(index),
+                        Margin = new Thickness(0, 0, 8, 0),
+                        ToolTip = "Optionale Kachelbeschriftung"
+                    };
+                    Button backgroundButton = new()
+                    {
+                        Content = "Bild...",
+                        Width = 72,
+                        ToolTip = widget.GetHomeTileBackground(index)
+                    };
+                    Button clearBackgroundButton = new()
+                    {
+                        Content = "X",
+                        Width = 28,
+                        Margin = new Thickness(4, 0, 0, 0),
+                        ToolTip = "Hintergrundbild entfernen"
+                    };
                     tileSelector.SelectionChanged += (_, _) =>
                     {
                         if (tileSelector.SelectedIndex >= 0)
+                        {
                             widget.SetHomeTileType(tileIndex, (HomeTileType)tileSelector.SelectedIndex);
+                            actionSelector.Visibility = tileSelector.SelectedIndex == (int)HomeTileType.CustomAction ? Visibility.Visible : Visibility.Collapsed;
+                            linkInput.Visibility = tileSelector.SelectedIndex == (int)HomeTileType.WebLink ? Visibility.Visible : Visibility.Collapsed;
+                        }
+                    };
+                    actionSelector.SelectionChanged += (_, _) =>
+                    {
+                        Guid? actionId = actionSelector.SelectedValue is Guid selectedValue
+                            ? selectedValue
+                            : actionSelector.SelectedItem is KeyValuePair<Guid, string> selectedItem
+                                ? selectedItem.Key
+                                : null;
+                        widget.SetHomeTileAction(tileIndex, actionId);
+                    };
+                    linkInput.LostFocus += (_, _) =>
+                    {
+                        widget.SetHomeTileLink(tileIndex, linkInput.Text);
+                        linkInput.Text = widget.GetHomeTileLink(tileIndex);
+                    };
+                    labelInput.LostFocus += (_, _) =>
+                    {
+                        widget.SetHomeTileLabel(tileIndex, labelInput.Text);
+                        labelInput.Text = widget.GetHomeTileLabel(tileIndex);
+                    };
+                    backgroundButton.Click += (_, _) =>
+                    {
+                        OpenFileDialog dialog = new()
+                        {
+                            Title = $"Hintergrundbild für HOME-Slot {tileIndex + 1}",
+                            Filter = "Bilder|*.png;*.jpg;*.jpeg;*.bmp;*.gif|Alle Dateien|*.*",
+                            CheckFileExists = true,
+                            Multiselect = false
+                        };
+                        if (dialog.ShowDialog() == true)
+                        {
+                            widget.SetHomeTileBackground(tileIndex, dialog.FileName);
+                            backgroundButton.ToolTip = dialog.FileName;
+                        }
+                    };
+                    clearBackgroundButton.Click += (_, _) =>
+                    {
+                        widget.SetHomeTileBackground(tileIndex, string.Empty);
+                        backgroundButton.ToolTip = string.Empty;
                     };
                     tileRow.Children.Add(tileSelector);
+                    tileRow.Children.Add(actionSelector);
+                    tileRow.Children.Add(linkInput);
                     pageOptions.Children.Add(tileRow);
+                    StackPanel tileAppearanceRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(64, 2, 0, 0) };
+                    tileAppearanceRow.Children.Add(labelInput);
+                    tileAppearanceRow.Children.Add(backgroundButton);
+                    tileAppearanceRow.Children.Add(clearBackgroundButton);
+                    pageOptions.Children.Add(tileAppearanceRow);
                 }
+
+                pageOptions.Children.Add(new TextBlock { Text = "HOME-Buttons", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 12, 0, 4) });
+                string[] homeButtonTargetLabels = { "HOME", "CPU / GPU", "RAM / NET", "Aktionen", "Info", "Discord", "Leer" };
+                for (int index = 0; index < 5; index++)
+                {
+                    int buttonIndex = index;
+                    StackPanel buttonRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+                    buttonRow.Children.Add(new TextBlock { Text = $"Button {index + 1}", Width = 64, VerticalAlignment = VerticalAlignment.Center });
+                    ComboBox buttonSelector = new()
+                    {
+                        Width = 137,
+                        ItemsSource = homeButtonTargetLabels,
+                        SelectedIndex = (int)widget.GetHomeButtonTarget(index),
+                        HorizontalAlignment = HorizontalAlignment.Left,
+                        HorizontalContentAlignment = HorizontalAlignment.Left
+                    };
+                    TextBox labelInput = new()
+                    {
+                        Width = 120,
+                        Text = widget.GetHomeButtonLabel(index),
+                        Margin = new Thickness(8, 0, 0, 0),
+                        HorizontalContentAlignment = HorizontalAlignment.Left
+                    };
+                    buttonSelector.SelectionChanged += (_, _) =>
+                    {
+                        if (buttonSelector.SelectedIndex >= 0)
+                            widget.SetHomeButtonTarget(buttonIndex, (HomeButtonTarget)buttonSelector.SelectedIndex);
+                    };
+                    labelInput.LostFocus += (_, _) =>
+                    {
+                        widget.SetHomeButtonLabel(buttonIndex, labelInput.Text);
+                        labelInput.Text = widget.GetHomeButtonLabel(buttonIndex);
+                    };
+                    buttonRow.Children.Add(buttonSelector);
+                    buttonRow.Children.Add(labelInput);
+                    pageOptions.Children.Add(buttonRow);
+                }
+
+                pageOptions.Children.Add(new TextBlock { Text = "Lokale Discord-Bridge", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 12, 0, 4) });
+                StackPanel discordUrlRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+                discordUrlRow.Children.Add(new TextBlock { Text = "Status-URL", Width = 64, VerticalAlignment = VerticalAlignment.Center });
+                TextBox discordStatusUrlInput = new()
+                {
+                    Width = 300,
+                    Text = widget.DiscordStatusUrl,
+                    HorizontalContentAlignment = HorizontalAlignment.Left
+                };
+                discordStatusUrlInput.LostFocus += (_, _) =>
+                {
+                    widget.SetDiscordStatusUrl(discordStatusUrlInput.Text);
+                    discordStatusUrlInput.Text = widget.DiscordStatusUrl;
+                };
+                discordUrlRow.Children.Add(discordStatusUrlInput);
+                pageOptions.Children.Add(discordUrlRow);
+
+                StackPanel discordLaunchRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+                discordLaunchRow.Children.Add(new TextBlock { Text = "Öffnen-URL", Width = 64, VerticalAlignment = VerticalAlignment.Center });
+                TextBox discordLaunchUrlInput = new()
+                {
+                    Width = 300,
+                    Text = widget.DiscordLaunchUrl,
+                    HorizontalContentAlignment = HorizontalAlignment.Left
+                };
+                discordLaunchUrlInput.LostFocus += (_, _) =>
+                {
+                    widget.SetDiscordLaunchUrl(discordLaunchUrlInput.Text);
+                    discordLaunchUrlInput.Text = widget.DiscordLaunchUrl;
+                };
+                discordLaunchRow.Children.Add(discordLaunchUrlInput);
+                pageOptions.Children.Add(discordLaunchRow);
+
+                StackPanel discordApiKeyRow = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
+                discordApiKeyRow.Children.Add(new TextBlock { Text = "API-Key", Width = 64, VerticalAlignment = VerticalAlignment.Center });
+                PasswordBox discordApiKeyInput = new()
+                {
+                    Width = 300,
+                    Password = widget.DiscordApiKey,
+                    HorizontalContentAlignment = HorizontalAlignment.Left
+                };
+                discordApiKeyInput.LostFocus += (_, _) => widget.SetDiscordApiKey(discordApiKeyInput.Password);
+                discordApiKeyRow.Children.Add(discordApiKeyInput);
+                pageOptions.Children.Add(discordApiKeyRow);
             }
 
             panel.Children.Add(CreateSectionExpander("Seiten", pageOptions, true));
@@ -974,6 +1149,25 @@ public sealed class HwinfoPanelSettings : UserControl
 
         if (compact)
         {
+            if (widget.WidgetSize.Width == 2 && widget.WidgetSize.Height == 2 && widget.PanelTarget == PanelTarget.Storage)
+            {
+                panel.Children.Add(new TextBlock { Text = "LAUFWERK-TEMPERATUREN", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 4, 0, 4) });
+                SensorSlot[] driveTemperatureSlots =
+                {
+                    SensorSlot.DriveCTemperature,
+                    SensorSlot.DriveDTemperature,
+                    SensorSlot.DriveETemperature,
+                    SensorSlot.DriveFTemperature,
+                    SensorSlot.DriveGTemperature,
+                    SensorSlot.DriveHTemperature,
+                    SensorSlot.DriveITemperature,
+                    SensorSlot.DriveJTemperature
+                };
+                for (int index = 0; index < driveTemperatureSlots.Length; index++)
+                    AddSensorSelector(panel, $"{(char)('C' + index)}: Temperatur", driveTemperatureSlots[index]);
+                return;
+            }
+
             bool gpu = widget.PanelTarget == PanelTarget.Gpu;
             AddSensorSelector(panel, gpu ? "GPU-Last" : "CPU-Last", gpu ? SensorSlot.GpuLoad : SensorSlot.CpuLoad);
             AddSensorSelector(panel, gpu ? "GPU-Temperatur" : "CPU-Temperatur", gpu ? SensorSlot.GpuTemperature : SensorSlot.CpuTemperature);
@@ -1110,6 +1304,19 @@ public sealed class HwinfoPanelSettings : UserControl
                    text.IndexOf("Download", StringComparison.OrdinalIgnoreCase) >= 0 ||
                    text.IndexOf("Transmit", StringComparison.OrdinalIgnoreCase) >= 0 ||
                    text.IndexOf("Receive", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        if (slot >= SensorSlot.DriveCTemperature && slot <= SensorSlot.DriveJTemperature)
+        {
+            bool temperatureUnit = unit.Equals("°C", StringComparison.OrdinalIgnoreCase) ||
+                                   unit.Equals("C", StringComparison.OrdinalIgnoreCase);
+            return temperatureUnit && (text.IndexOf("Drive", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       text.IndexOf("Disk", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       text.IndexOf("Storage", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       text.IndexOf("NVMe", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       text.IndexOf("SSD", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       text.IndexOf("HDD", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                       text.IndexOf("Temperature", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
 
         return true;
     }

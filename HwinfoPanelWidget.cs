@@ -3,9 +3,13 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Web.Script.Serialization;
 using System.Windows.Controls;
 using WigiDashWidgetFramework;
 using WigiDashWidgetFramework.WidgetUtility;
@@ -36,7 +40,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private readonly object bitmapLock = new();
     private readonly object drawLock = new();
     private readonly AutoResetEvent stopEvent = new(false);
+    private readonly AutoResetEvent discordStopEvent = new(false);
     private readonly Thread drawThread;
+    private readonly Thread discordThread;
     private volatile bool running = true;
     private readonly int bitmapWidth;
     private readonly int bitmapHeight;
@@ -66,7 +72,20 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     private Guid? headerExternalActionId;
     private PanelPage startPage = PanelPage.Hardware;
     private volatile PanelPage currentPage = PanelPage.Hardware;
+    private volatile int homeView;
+    private volatile DiscordStatus discordStatus = new();
+    private int discordOnlineOffset;
+    private int discordVoiceOffset;
+    private string discordStatusUrl = "http://127.0.0.1:47900/status";
+    private string discordLaunchUrl = "discord://-/";
+    private string discordApiKey = string.Empty;
     private readonly HomeTileType[] homeTiles = { HomeTileType.Cpu, HomeTileType.Gpu, HomeTileType.Ram, HomeTileType.Network };
+    private readonly Guid?[] homeTileActions = new Guid?[4];
+    private readonly string[] homeTileLinks = new string[4];
+    private readonly string[] homeTileLabels = new string[4];
+    private readonly string[] homeTileBackgrounds = new string[4];
+    private readonly HomeButtonTarget[] homeButtons = { HomeButtonTarget.Home, HomeButtonTarget.Hardware, HomeButtonTarget.MemoryNetwork, HomeButtonTarget.Actions, HomeButtonTarget.Info };
+    private readonly string[] homeButtonLabels = { "HOME", "CPU / GPU", "RAM / NET", "AKTIONEN", "INFO" };
     // Wird pro Frame komplett neu aufgebaut und erst danach atomar ersetzt.
     private volatile List<HitTarget> hitTargets = new();
     private int timeFontSize = 15;
@@ -89,6 +108,8 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         LoadSensorBindings();
         drawThread = new Thread(DrawLoop) { IsBackground = true };
         drawThread.Start();
+        discordThread = new Thread(DiscordLoop) { IsBackground = true };
+        discordThread.Start();
     }
 
     public IWidgetObject WidgetObject => factory;
@@ -120,7 +141,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         else if (headerTouchAction == HeaderTouchAction.ToggleDisplay)
             ToggleDisplayMode();
         else if (headerTouchAction == HeaderTouchAction.ExternalAction && headerExternalActionId.HasValue)
-            factory.WidgetManager?.TriggerAction(headerExternalActionId.Value);
+            factory.WidgetManager?.OnTriggerOccurred(headerExternalActionId.Value);
     }
 
     public UserControl GetSettingsControl() => new HwinfoPanelSettings(this);
@@ -129,10 +150,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public bool SupportsPages => WidgetSize.Width >= 3 && WidgetSize.Height >= 2;
     public PanelPage StartPage => startPage;
     public HomeTileType GetHomeTileType(int index) => index >= 0 && index < homeTiles.Length ? homeTiles[index] : HomeTileType.Empty;
+    public Guid? GetHomeTileActionId(int index) => index >= 0 && index < homeTileActions.Length ? homeTileActions[index] : null;
+    public string GetHomeTileLink(int index) => index >= 0 && index < homeTileLinks.Length ? homeTileLinks[index] ?? string.Empty : string.Empty;
+    public string GetHomeTileLabel(int index) => index >= 0 && index < homeTileLabels.Length ? homeTileLabels[index] ?? string.Empty : string.Empty;
+    public string GetHomeTileBackground(int index) => index >= 0 && index < homeTileBackgrounds.Length ? homeTileBackgrounds[index] ?? string.Empty : string.Empty;
+    public HomeButtonTarget GetHomeButtonTarget(int index) => index >= 0 && index < homeButtons.Length ? homeButtons[index] : HomeButtonTarget.Empty;
+    public string GetHomeButtonLabel(int index) => index >= 0 && index < homeButtonLabels.Length ? homeButtonLabels[index] : string.Empty;
 
     private float LayoutReferenceHeight => WidgetSize.Height >= 4 ? ReferenceHeight : 447f;
-    private float LayoutReferenceWidth => WidgetSize.Width == 3 && WidgetSize.Height == 3
-        ? bitmapWidth * 447f / bitmapHeight
+    private float LayoutReferenceWidth => WidgetSize.Width >= 2 && WidgetSize.Height >= 2
+        ? bitmapWidth * LayoutReferenceHeight / bitmapHeight
         : ReferenceWidth;
 
     private bool TryHandlePageTouch(int referenceX, int referenceY)
@@ -179,6 +206,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     public int UpdateIntervalMilliseconds => updateIntervalMilliseconds;
     public PanelTarget PanelTarget => panelTarget;
     public string TimeZoneId => timeZoneId;
+    public string DiscordStatusUrl => discordStatusUrl;
+    public string DiscordLaunchUrl => discordLaunchUrl;
+    public string DiscordApiKey => discordApiKey;
     public HeaderTouchAction HeaderTouchAction => headerTouchAction;
     public Guid? HeaderExternalActionId => headerExternalActionId;
     public int TimeFontSize => timeFontSize;
@@ -358,6 +388,29 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         UpdateNow();
     }
 
+    public void SetDiscordStatusUrl(string url)
+    {
+        discordStatusUrl = string.IsNullOrWhiteSpace(url) ? "http://127.0.0.1:47900/status" : url.Trim();
+        factory.WidgetManager?.StoreSetting(this, "DiscordStatusUrl", discordStatusUrl);
+        discordStopEvent.Set();
+        RequestUpdate();
+    }
+
+    public void SetDiscordLaunchUrl(string url)
+    {
+        discordLaunchUrl = string.IsNullOrWhiteSpace(url) ? "discord://-/" : url.Trim();
+        factory.WidgetManager?.StoreSetting(this, "DiscordLaunchUrl", discordLaunchUrl);
+        RequestUpdate();
+    }
+
+    public void SetDiscordApiKey(string apiKey)
+    {
+        discordApiKey = apiKey?.Trim() ?? string.Empty;
+        factory.WidgetManager?.StoreSetting(this, "DiscordApiKey", discordApiKey);
+        discordStopEvent.Set();
+        RequestUpdate();
+    }
+
     public void SetHomeTileType(int index, HomeTileType tileType)
     {
         if (index < 0 || index >= homeTiles.Length)
@@ -365,6 +418,67 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
         homeTiles[index] = tileType;
         factory.WidgetManager?.StoreSetting(this, $"HomeTile{index + 1}", tileType.ToString());
+        RequestUpdate();
+    }
+
+    public void SetHomeTileAction(int index, Guid? actionId)
+    {
+        if (index < 0 || index >= homeTileActions.Length)
+            return;
+
+        homeTileActions[index] = actionId;
+        factory.WidgetManager?.StoreSetting(this, $"HomeTileAction{index + 1}", actionId?.ToString() ?? string.Empty);
+        RequestUpdate();
+    }
+
+    public void SetHomeTileLink(int index, string link)
+    {
+        if (index < 0 || index >= homeTileLinks.Length)
+            return;
+
+        homeTileLinks[index] = link?.Trim() ?? string.Empty;
+        factory.WidgetManager?.StoreSetting(this, $"HomeTileLink{index + 1}", homeTileLinks[index]);
+        RequestUpdate();
+    }
+
+    public void SetHomeTileLabel(int index, string label)
+    {
+        if (index < 0 || index >= homeTileLabels.Length)
+            return;
+
+        homeTileLabels[index] = label?.Trim() ?? string.Empty;
+        factory.WidgetManager?.StoreSetting(this, $"HomeTileLabel{index + 1}", homeTileLabels[index]);
+        RequestUpdate();
+    }
+
+    public void SetHomeTileBackground(int index, string path)
+    {
+        if (index < 0 || index >= homeTileBackgrounds.Length)
+            return;
+
+        homeTileBackgrounds[index] = path?.Trim() ?? string.Empty;
+        factory.WidgetManager?.StoreSetting(this, $"HomeTileBackground{index + 1}", homeTileBackgrounds[index]);
+        RequestUpdate();
+    }
+
+    public void SetHomeButtonTarget(int index, HomeButtonTarget target)
+    {
+        if (index < 0 || index >= homeButtons.Length)
+            return;
+
+        homeButtons[index] = target;
+        factory.WidgetManager?.StoreSetting(this, $"HomeButton{index + 1}", target.ToString());
+        RequestUpdate();
+    }
+
+    public void SetHomeButtonLabel(int index, string label)
+    {
+        if (index < 0 || index >= homeButtonLabels.Length)
+            return;
+
+        string normalizedLabel = string.IsNullOrWhiteSpace(label) ? GetDefaultHomeButtonLabel(homeButtons[index]) : label.Trim();
+        homeButtonLabels[index] = normalizedLabel.Length > 18 ? normalizedLabel.Substring(0, 18) : normalizedLabel;
+        factory.WidgetManager?.StoreSetting(this, $"HomeButtonLabel{index + 1}", homeButtonLabels[index]);
         RequestUpdate();
     }
 
@@ -393,7 +507,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (WidgetSize.Width == 5 && WidgetSize.Height == 4)
             SetFiveByFourGaugeMode((FiveByFourGaugeMode)(((int)fiveByFourGaugeMode + 1) % 3));
         else
-            SetPanelTarget((PanelTarget)(((int)panelTarget + 1) % 3));
+            SetPanelTarget((PanelTarget)(((int)panelTarget + 1) % (WidgetSize.Width == 2 && WidgetSize.Height == 2 ? 4 : 3)));
     }
 
     public void UpdateNow()
@@ -412,8 +526,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
     {
         running = false;
         stopEvent.Set();
+        discordStopEvent.Set();
         factory.WidgetManager?.UnregisterTrigger(this, headerTouchTriggerId);
         if (drawThread.IsAlive) drawThread.Join();
+        if (discordThread.IsAlive) discordThread.Join();
         sensorSource.Dispose();
         lock (bitmapLock)
         {
@@ -422,6 +538,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         lock (sharedGaugeSettingsLock)
             sharedGaugeWidgets.Remove(this);
         stopEvent.Dispose();
+        discordStopEvent.Dispose();
     }
 
     private void DrawLoop()
@@ -441,6 +558,41 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
             if (stopEvent.WaitOne(updateIntervalMilliseconds))
                 break;
+        }
+    }
+
+    private void DiscordLoop()
+    {
+        while (running)
+        {
+            UpdateDiscordStatus();
+            discordStopEvent.WaitOne(2000);
+        }
+    }
+
+    private void UpdateDiscordStatus()
+    {
+        try
+        {
+            using HttpClient client = new() { Timeout = TimeSpan.FromMilliseconds(750) };
+            using HttpRequestMessage request = new(HttpMethod.Get, discordStatusUrl);
+            if (!string.IsNullOrWhiteSpace(discordApiKey))
+                request.Headers.Add("X-API-Key", discordApiKey);
+            string json = client.SendAsync(request).GetAwaiter().GetResult().Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            DiscordStatus status = new JavaScriptSerializer().Deserialize<DiscordStatus>(json);
+            if (status != null)
+            {
+                discordStatus = status;
+                discordOnlineOffset = 0;
+                discordVoiceOffset = 0;
+                RequestUpdate();
+            }
+        }
+        catch (Exception)
+        {
+            discordStatus = new DiscordStatus { Status = "offline" };
+            discordOnlineOffset = 0;
+            discordVoiceOffset = 0;
         }
     }
 
@@ -554,12 +706,47 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             Enum.TryParse(savedStartPage, out PanelPage savedPage))
             startPage = savedPage;
 
+        if (factory.WidgetManager.LoadSetting(this, "DiscordStatusUrl", out string savedDiscordStatusUrl) &&
+            !string.IsNullOrWhiteSpace(savedDiscordStatusUrl))
+            discordStatusUrl = savedDiscordStatusUrl.Trim();
+
+        if (factory.WidgetManager.LoadSetting(this, "DiscordLaunchUrl", out string savedDiscordLaunchUrl) &&
+            !string.IsNullOrWhiteSpace(savedDiscordLaunchUrl))
+            discordLaunchUrl = savedDiscordLaunchUrl.Trim();
+
+        if (factory.WidgetManager.LoadSetting(this, "DiscordApiKey", out string savedDiscordApiKey))
+            discordApiKey = savedDiscordApiKey.Trim();
+
         for (int index = 0; index < homeTiles.Length; index++)
         {
             if (factory.WidgetManager.LoadSetting(this, $"HomeTile{index + 1}", out string savedHomeTile) &&
                 Enum.TryParse(savedHomeTile, out HomeTileType homeTile))
                 homeTiles[index] = homeTile;
+
+            if (factory.WidgetManager.LoadSetting(this, $"HomeTileAction{index + 1}", out string savedHomeTileAction) &&
+                Guid.TryParse(savedHomeTileAction, out Guid homeTileAction))
+                homeTileActions[index] = homeTileAction;
+
+            if (factory.WidgetManager.LoadSetting(this, $"HomeTileLink{index + 1}", out string savedHomeTileLink))
+                homeTileLinks[index] = savedHomeTileLink;
+
+            if (factory.WidgetManager.LoadSetting(this, $"HomeTileLabel{index + 1}", out string savedHomeTileLabel))
+                homeTileLabels[index] = savedHomeTileLabel;
+
+            if (factory.WidgetManager.LoadSetting(this, $"HomeTileBackground{index + 1}", out string savedHomeTileBackground))
+                homeTileBackgrounds[index] = savedHomeTileBackground;
         }
+
+            for (int index = 0; index < homeButtons.Length; index++)
+            {
+                if (factory.WidgetManager.LoadSetting(this, $"HomeButton{index + 1}", out string savedHomeButton) &&
+                Enum.TryParse(savedHomeButton, out HomeButtonTarget homeButton))
+                homeButtons[index] = homeButton;
+
+                if (factory.WidgetManager.LoadSetting(this, $"HomeButtonLabel{index + 1}", out string savedHomeButtonLabel) &&
+                    !string.IsNullOrWhiteSpace(savedHomeButtonLabel))
+                    homeButtonLabels[index] = savedHomeButtonLabel.Trim();
+            }
 
         if (factory.WidgetManager.LoadSetting(this, "TimeFontSize", out string savedTimeFontSize) &&
             int.TryParse(savedTimeFontSize, out int fontSize))
@@ -692,6 +879,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         int margin = 12;
         int gap = 12;
         bool isThreeByThree = WidgetSize.Width == 3 && WidgetSize.Height == 3;
+        bool isFourByThree = WidgetSize.Width == 4 && WidgetSize.Height == 3;
         int top = isThreeByThree ? 12 : 72;
         int largeWidth = ((int)LayoutReferenceWidth - margin * 2 - gap) / 2;
         int largeHeight = isThreeByThree ? 220 : 220;
@@ -717,26 +905,46 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         int vramWidth = isThreeByThree ? smallWidth - 20 : smallWidth;
         int networkX = margin + ramWidth + gap;
         int vramX = networkX + networkWidth + gap;
-        DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, ramWidth, smallHeight), data, accentColor, titleFont, valueFont, detailFont, ramGaugeAlignment, isThreeByThree);
-        DrawNetworkCard(graphics, new Rectangle(networkX, bottomTop, networkWidth, smallHeight), data, accentColor, titleFont, detailFont, uploadNetworkScaleMegabytesPerSecond, downloadNetworkScaleMegabytesPerSecond);
-        DrawVramCard(graphics, new Rectangle(vramX, bottomTop, vramWidth, smallHeight), data, accentColor, titleFont, valueFont, detailFont, vramGaugeAlignment, isThreeByThree);
-
-        if (WidgetSize.Width >= 5 && WidgetSize.Height >= 4)
+        if (WidgetSize.Width == 5 && WidgetSize.Height >= 4)
         {
             int infoTop = bottomTop + smallHeight + gap;
-            DrawLogoCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), accentColor, titleFont, detailFont);
+            int storageHeight = smallHeight * 2 + gap;
+            int storageX = margin + smallWidth + gap;
+            int rightX = margin + (smallWidth + gap) * 2;
+            DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, smallWidth, smallHeight), data, accentColor, titleFont, valueFont, detailFont, ramGaugeAlignment, false, false);
+            DrawDiskCard(graphics, new Rectangle(storageX, bottomTop, smallWidth, storageHeight), data, accentColor, titleFont, detailFont);
+            DrawVramCard(graphics, new Rectangle(rightX, bottomTop, smallWidth, smallHeight), data, accentColor, titleFont, valueFont, detailFont, vramGaugeAlignment, false, false);
+            DrawNetworkCard(graphics, new Rectangle(margin, infoTop, smallWidth, smallHeight), data, accentColor, titleFont, detailFont, uploadNetworkScaleMegabytesPerSecond, downloadNetworkScaleMegabytesPerSecond, false);
+            DrawFanCard(graphics, new Rectangle(rightX, infoTop, smallWidth, smallHeight), data, accentColor, titleFont, detailFont);
+        }
+        else if (WidgetSize.Width >= 5 && WidgetSize.Height >= 4)
+        {
+            int infoTop = bottomTop + smallHeight + gap;
+            DrawDiskCard(graphics, new Rectangle(margin, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
             DrawFanCard(graphics, new Rectangle(margin + smallWidth + gap, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
             DrawFpsCard(graphics, new Rectangle(margin + (smallWidth + gap) * 2, infoTop, smallWidth, 120), data, accentColor, titleFont, detailFont);
+        }
+        else
+        {
+            DrawMemoryCard(graphics, new Rectangle(margin, bottomTop, ramWidth, smallHeight), data, accentColor, titleFont, valueFont, detailFont, ramGaugeAlignment, isThreeByThree, isFourByThree);
+            DrawNetworkCard(graphics, new Rectangle(networkX, bottomTop, networkWidth, smallHeight), data, accentColor, titleFont, detailFont, uploadNetworkScaleMegabytesPerSecond, downloadNetworkScaleMegabytesPerSecond, isFourByThree);
+            DrawVramCard(graphics, new Rectangle(vramX, bottomTop, vramWidth, smallHeight), data, accentColor, titleFont, valueFont, detailFont, vramGaugeAlignment, isThreeByThree, isFourByThree);
         }
     }
 
     private void DrawHomePage(Graphics graphics, float referenceHeight, SensorSnapshot data, Font titleFont, Font detailFont, List<HitTarget> targets)
     {
-        DrawHomeDashboard(graphics, referenceHeight, data, titleFont, detailFont);
+        DrawHomeDashboard(graphics, referenceHeight, data, titleFont, detailFont, targets);
     }
 
-    private void DrawHomeDashboard(Graphics graphics, float referenceHeight, SensorSnapshot data, Font titleFont, Font detailFont)
+    private void DrawHomeDashboard(Graphics graphics, float referenceHeight, SensorSnapshot data, Font titleFont, Font detailFont, List<HitTarget> targets)
     {
+        if (WidgetSize.Width >= 4 && WidgetSize.Height >= 3)
+        {
+            DrawLargeHomeDashboard(graphics, referenceHeight, data, titleFont, detailFont, targets);
+            return;
+        }
+
         const int margin = 12;
         const int gap = 12;
         int top = WidgetSize.Width == 3 && WidgetSize.Height == 3 ? 12 : 72;
@@ -748,12 +956,320 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             int column = index % 2;
             int row = index / 2;
             Rectangle bounds = new(margin + column * (tileWidth + gap), top + row * (tileHeight + gap), tileWidth, tileHeight);
-            DrawHomeTile(graphics, bounds, homeTiles[index], data, titleFont, detailFont);
+            DrawHomeTile(graphics, bounds, homeTiles[index], index, data, titleFont, detailFont);
+            if (homeTiles[index] == HomeTileType.CustomAction && homeTileActions[index].HasValue)
+            {
+                Guid actionId = homeTileActions[index].Value;
+                targets.Add(new HitTarget(bounds, () => factory.WidgetManager?.OnTriggerOccurred(actionId)));
+            }
+            else if (homeTiles[index] == HomeTileType.WebLink && !string.IsNullOrWhiteSpace(homeTileLinks[index]))
+            {
+                string link = homeTileLinks[index];
+                targets.Add(new HitTarget(bounds, () => OpenWebLink(link)));
+            }
         }
     }
 
-    private void DrawHomeTile(Graphics graphics, Rectangle bounds, HomeTileType tileType, SensorSnapshot data, Font titleFont, Font detailFont)
+    private void DrawLargeHomeDashboard(Graphics graphics, float referenceHeight, SensorSnapshot data, Font titleFont, Font detailFont, List<HitTarget> targets)
     {
+        const int margin = 12;
+        const int gap = 12;
+        const int sidebarWidth = 170;
+        int top = 72;
+        int sidebarX = (int)LayoutReferenceWidth - margin - sidebarWidth;
+        int windowWidth = sidebarX - gap - margin;
+        int windowHeight = (int)referenceHeight - top - margin;
+        Rectangle window = new(margin, top, windowWidth, windowHeight);
+
+        DrawCardFrame(graphics, window, accentColor);
+        DrawHomeWindow(graphics, window, data, titleFont, detailFont, targets);
+
+        for (int index = 0; index < homeButtons.Length; index++)
+        {
+            Rectangle button = new(sidebarX, top + index * 58, sidebarWidth, 46);
+            HomeButtonTarget target = homeButtons[index];
+            bool selected = target != HomeButtonTarget.Hardware && homeView == (int)target;
+            using Brush background = new SolidBrush(selected ? Color.FromArgb(32, 38, 48) : Color.FromArgb(18, 21, 27));
+            using Pen border = new(selected ? accentColor : Color.FromArgb(75, 82, 94), selected ? 2 : 1);
+            using Font buttonFont = new("Segoe UI", 11, FontStyle.Bold);
+            using StringFormat centered = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            graphics.FillRectangle(background, button);
+            graphics.DrawRectangle(border, button);
+            graphics.DrawString(GetHomeButtonLabel(index, target), buttonFont, Brushes.White, button, centered);
+
+            Rectangle touchArea = button;
+            touchArea.Inflate(6, 6);
+            HomeButtonTarget selectedTarget = target;
+            targets.Add(new HitTarget(touchArea, () =>
+            {
+                if (selectedTarget == HomeButtonTarget.Hardware)
+                    NavigateTo(PanelPage.Hardware);
+                else if (selectedTarget != HomeButtonTarget.Empty)
+                    SetHomeView((int)selectedTarget);
+            }));
+        }
+    }
+
+    private string GetHomeButtonLabel(int index, HomeButtonTarget target)
+    {
+        string label = index >= 0 && index < homeButtonLabels.Length ? homeButtonLabels[index] : string.Empty;
+        return string.IsNullOrWhiteSpace(label) ? GetDefaultHomeButtonLabel(target) : label;
+    }
+
+    private static string GetDefaultHomeButtonLabel(HomeButtonTarget target)
+    {
+        return target switch
+        {
+            HomeButtonTarget.Home => "HOME",
+            HomeButtonTarget.Hardware => "CPU / GPU",
+            HomeButtonTarget.MemoryNetwork => "RAM / NET",
+            HomeButtonTarget.Actions => "AKTIONEN",
+            HomeButtonTarget.Info => "INFO",
+            HomeButtonTarget.Discord => "DISCORD",
+            _ => "LEER"
+        };
+    }
+
+    private void SetHomeView(int view)
+    {
+        homeView = view < 0 ? 0 : view > 5 ? 5 : view;
+        RequestUpdate();
+    }
+
+    private void DrawHomeWindow(Graphics graphics, Rectangle window, SensorSnapshot data, Font titleFont, Font detailFont, List<HitTarget> targets)
+    {
+        using Brush white = new SolidBrush(Color.White);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        using Brush accentBrush = new SolidBrush(accentColor);
+        using Font windowTitleFont = new("Segoe UI", 17, FontStyle.Bold);
+        graphics.DrawString(homeView switch
+        {
+            1 => "CPU / GPU",
+            2 => "RAM / NET",
+            3 => "AKTIONEN",
+            4 => "INFO",
+            5 => "DISCORD",
+            _ => "HOME"
+        }, windowTitleFont, white, window.X + 20, window.Y + 16);
+
+        Rectangle content = new(window.X + 18, window.Y + 54, window.Width - 36, window.Height - 72);
+        if (homeView == 1)
+        {
+            int cardWidth = (content.Width - 12) / 2;
+            DrawCoreCard(graphics, new Rectangle(content.X, content.Y, cardWidth, 220), "CPU", data.CpuName, data.CpuLoadPercent, data.CpuTemperatureCelsius, data.CpuClockMhz, data.CpuPowerWatts, data.CpuFanRpm, accentColor, titleFont, new Font("Segoe UI", 22, FontStyle.Bold), detailFont);
+            DrawCoreCard(graphics, new Rectangle(content.X + cardWidth + 12, content.Y, cardWidth, 220), "GPU", data.GpuName, data.GpuLoadPercent, data.GpuTemperatureCelsius, data.GpuClockMhz, data.GpuPowerWatts, data.GpuFanRpm, accentColor, titleFont, new Font("Segoe UI", 22, FontStyle.Bold), detailFont);
+        }
+        else if (homeView == 2)
+        {
+            int cardWidth = (content.Width - 24) / 3;
+            DrawMemoryCard(graphics, new Rectangle(content.X, content.Y, cardWidth, content.Height), data, accentColor, titleFont, new Font("Segoe UI", 22, FontStyle.Bold), detailFont, ramGaugeAlignment, false, false);
+            DrawNetworkCard(graphics, new Rectangle(content.X + cardWidth + 12, content.Y, cardWidth, content.Height), data, accentColor, titleFont, detailFont, uploadNetworkScaleMegabytesPerSecond, downloadNetworkScaleMegabytesPerSecond, false);
+            DrawVramCard(graphics, new Rectangle(content.X + (cardWidth + 12) * 2, content.Y, cardWidth, content.Height), data, accentColor, titleFont, new Font("Segoe UI", 22, FontStyle.Bold), detailFont, vramGaugeAlignment, false, false);
+        }
+        else if (homeView == 3)
+        {
+            int tileWidth = (content.Width - 12) / 2;
+            int tileHeight = (content.Height - 12) / 2;
+            for (int index = 0; index < homeTiles.Length; index++)
+            {
+                int column = index % 2;
+                int row = index / 2;
+                Rectangle tile = new(content.X + column * (tileWidth + 12), content.Y + row * (tileHeight + 12), tileWidth, tileHeight);
+                DrawHomeTile(graphics, tile, homeTiles[index], index, data, titleFont, detailFont);
+                if (homeTiles[index] == HomeTileType.CustomAction && homeTileActions[index].HasValue)
+                {
+                    Guid actionId = homeTileActions[index].Value;
+                    targets.Add(new HitTarget(tile, () => factory.WidgetManager?.OnTriggerOccurred(actionId)));
+                }
+                else if (homeTiles[index] == HomeTileType.WebLink && !string.IsNullOrWhiteSpace(homeTileLinks[index]))
+                {
+                    string link = homeTileLinks[index];
+                    targets.Add(new HitTarget(tile, () => OpenWebLink(link)));
+                }
+            }
+        }
+        else if (homeView == 4)
+        {
+            graphics.DrawString("HWiNFO SENSOR PANEL", titleFont, white, content.X, content.Y + 20);
+            graphics.DrawString("HOME", detailFont, accentBrush, content.X, content.Y + 58);
+            graphics.DrawString("CPU, GPU, RAM, VRAM, Netzwerk und externe Aktionen", detailFont, muted, content.X, content.Y + 88);
+            graphics.DrawString("Version 1.0.0 · by ReXx09", detailFont, muted, content.X, content.Y + 116);
+        }
+        else if (homeView == 5)
+        {
+            DrawDiscordPanel(graphics, content, titleFont, detailFont, targets);
+        }
+        else
+        {
+            int tileWidth = (content.Width - 12) / 2;
+            int tileHeight = (content.Height - 12) / 2;
+            for (int index = 0; index < homeTiles.Length; index++)
+            {
+                int column = index % 2;
+                int row = index / 2;
+                Rectangle tile = new(content.X + column * (tileWidth + 12), content.Y + row * (tileHeight + 12), tileWidth, tileHeight);
+                DrawHomeTile(graphics, tile, homeTiles[index], index, data, titleFont, detailFont);
+            }
+        }
+    }
+
+    private void DrawDiscordPanel(Graphics graphics, Rectangle content, Font titleFont, Font detailFont, List<HitTarget> targets)
+    {
+        using Brush white = new SolidBrush(Color.White);
+        using Brush statusBrush = new SolidBrush(GetDiscordStatusColor(discordStatus.Status));
+        using Brush accentBrush = new SolidBrush(accentColor);
+        Rectangle statusCard = new(content.X, content.Y, content.Width, 72);
+        DrawCardFrame(graphics, statusCard, accentColor);
+        graphics.FillEllipse(statusBrush, statusCard.X + 16, statusCard.Y + 17, 16, 16);
+        graphics.DrawString(string.IsNullOrWhiteSpace(discordStatus.Guild) ? "DISCORD" : NormalizeDiscordText(discordStatus.Guild), titleFont, white, statusCard.X + 44, statusCard.Y + 10);
+        graphics.DrawString($"{GetDiscordParticipants().Count} ONLINE", detailFont, accentBrush, statusCard.X + 44, statusCard.Y + 39);
+
+        int listTop = statusCard.Bottom + 12;
+        int listHeight = content.Bottom - listTop;
+        int listWidth = (content.Width - 12) / 2;
+        Rectangle onlineBounds = new(content.X, listTop, listWidth, listHeight);
+        Rectangle voiceBounds = new(content.X + listWidth + 12, listTop, listWidth, listHeight);
+        DrawDiscordParticipantList(graphics, onlineBounds, "ONLINE", GetDiscordParticipants(), targets, false, titleFont, detailFont);
+        DrawDiscordParticipantList(graphics, voiceBounds, "VOICE", GetDiscordVoiceParticipants(), targets, true, titleFont, detailFont);
+    }
+
+    private List<DiscordParticipant> GetDiscordParticipants()
+    {
+        List<DiscordParticipant> participants = GetDiscordRawParticipants();
+        return participants.FindAll(participant => !string.Equals(participant.Status, "offline", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private List<DiscordParticipant> GetDiscordRawParticipants()
+    {
+        if (discordStatus.Participants != null && discordStatus.Participants.Count > 0)
+            return discordStatus.Participants;
+
+        if (string.IsNullOrWhiteSpace(discordStatus.Username))
+            return new List<DiscordParticipant>();
+
+        return new List<DiscordParticipant>
+        {
+            new()
+            {
+                Username = discordStatus.Username,
+                Status = discordStatus.Status,
+                Activity = discordStatus.Activity,
+                VoiceChannel = discordStatus.VoiceChannel
+            }
+        };
+    }
+
+    private List<DiscordParticipant> GetDiscordVoiceParticipants()
+    {
+        List<DiscordParticipant> participants = GetDiscordRawParticipants();
+        return participants.FindAll(participant => !string.IsNullOrWhiteSpace(participant.VoiceChannel));
+    }
+
+    private void DrawDiscordParticipantList(Graphics graphics, Rectangle bounds, string title, List<DiscordParticipant> participants, List<HitTarget> targets, bool voiceOnly, Font titleFont, Font detailFont)
+    {
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        DrawCardFrame(graphics, bounds, Color.FromArgb(75, 82, 94));
+        graphics.DrawString(title, detailFont, muted, bounds.X + 12, bounds.Y + 10);
+        int rowHeight = 42;
+        int visibleRows = Math.Max(1, (bounds.Height - 58) / rowHeight);
+        int offset = voiceOnly ? discordVoiceOffset : discordOnlineOffset;
+        int maxOffset = Math.Max(0, participants.Count - visibleRows);
+        offset = Math.Min(offset, maxOffset);
+        int rowTop = bounds.Y + 34;
+        for (int index = 0; index < visibleRows && offset + index < participants.Count; index++)
+        {
+            DiscordParticipant participant = participants[offset + index];
+            Rectangle row = new(bounds.X + 8, rowTop + index * rowHeight, bounds.Width - 16, rowHeight - 4);
+            using Brush statusBrush = new SolidBrush(GetDiscordStatusColor(participant.Status));
+            graphics.FillEllipse(statusBrush, row.X + 4, row.Y + 10, 12, 12);
+            string username = NormalizeDiscordText(string.IsNullOrWhiteSpace(participant.Username) ? "Unbekannt" : participant.Username);
+            graphics.DrawString(username, detailFont, Brushes.White, row.X + 24, row.Y + 4);
+            string detail = voiceOnly
+                ? (participant.Muted ? "MIC AUS" : participant.Deafened ? "TAUB" : "VOICE")
+                : NormalizeDiscordText(string.IsNullOrWhiteSpace(participant.Activity) ? participant.Status : participant.Activity);
+            using Font rowDetailFont = new("Segoe UI", 9);
+            graphics.DrawString(detail, rowDetailFont, Brushes.Gray, row.X + 24, row.Y + 22);
+        }
+
+        if (participants.Count == 0)
+            graphics.DrawString(voiceOnly ? "Keine Voice-Teilnehmer" : "Keine Online-Teilnehmer", detailFont, Brushes.Gray, bounds.X + 12, rowTop + 12);
+
+        int buttonTop = bounds.Bottom - 28;
+        int buttonWidth = (bounds.Width - 24) / 2;
+        Rectangle upButton = new(bounds.X + 8, buttonTop, buttonWidth, 22);
+        Rectangle downButton = new(bounds.X + 16 + buttonWidth, buttonTop, buttonWidth, 22);
+        DrawDiscordButton(graphics, upButton, "^", detailFont);
+        DrawDiscordButton(graphics, downButton, "v", detailFont);
+        targets.Add(new HitTarget(upButton, () =>
+        {
+            if (voiceOnly)
+                discordVoiceOffset = Math.Max(0, discordVoiceOffset - 1);
+            else
+                discordOnlineOffset = Math.Max(0, discordOnlineOffset - 1);
+            RequestUpdate();
+        }));
+        targets.Add(new HitTarget(downButton, () =>
+        {
+            if (voiceOnly)
+                discordVoiceOffset = Math.Min(maxOffset, discordVoiceOffset + 1);
+            else
+                discordOnlineOffset = Math.Min(maxOffset, discordOnlineOffset + 1);
+            RequestUpdate();
+        }));
+    }
+
+    private void DrawDiscordInfoCard(Graphics graphics, Rectangle bounds, string label, string value, Font titleFont, Font detailFont)
+    {
+        using Brush labelBrush = new SolidBrush(Color.FromArgb(160, 170, 182));
+        DrawCardFrame(graphics, bounds, Color.FromArgb(75, 82, 94));
+        graphics.DrawString(label, detailFont, labelBrush, bounds.X + 12, bounds.Y + 10);
+        graphics.DrawString(value, titleFont, Brushes.White, bounds.X + 12, bounds.Y + 36);
+    }
+
+    private static string NormalizeDiscordText(string value)
+    {
+        string normalized = value.Normalize(System.Text.NormalizationForm.FormKD);
+        System.Text.StringBuilder result = new();
+        foreach (char character in normalized)
+        {
+            if (char.IsSurrogate(character) || char.IsControl(character))
+                continue;
+
+            result.Append(character switch
+            {
+                '》' => '>',
+                '《' => '<',
+                _ => character
+            });
+        }
+
+        return result.ToString().Trim();
+    }
+
+    private void DrawDiscordButton(Graphics graphics, Rectangle bounds, string label, Font titleFont)
+    {
+        using Brush background = new SolidBrush(Color.FromArgb(24, 29, 38));
+        using Pen border = new(accentColor, 1);
+        using StringFormat centered = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        graphics.FillRectangle(background, bounds);
+        graphics.DrawRectangle(border, bounds);
+        graphics.DrawString(label, titleFont, Brushes.White, bounds, centered);
+    }
+
+    private static Color GetDiscordStatusColor(string status)
+    {
+        return status?.ToLowerInvariant() switch
+        {
+            "online" => Color.FromArgb(60, 200, 110),
+            "idle" => Color.FromArgb(235, 190, 45),
+            "dnd" => Color.FromArgb(230, 65, 70),
+            _ => Color.FromArgb(125, 133, 145)
+        };
+    }
+
+    private void DrawHomeTile(Graphics graphics, Rectangle bounds, HomeTileType tileType, int tileIndex, SensorSnapshot data, Font titleFont, Font detailFont)
+    {
+        DrawHomeTileBackground(graphics, bounds, homeTileBackgrounds[tileIndex]);
         DrawCardFrame(graphics, bounds, accentColor);
         using Brush white = new SolidBrush(Color.White);
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
@@ -799,6 +1315,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                 value = $"{data.Fps:0}";
                 detail = "Frame rate";
                 break;
+            case HomeTileType.CustomAction:
+                title = "AKTION";
+                value = "START";
+                detail = GetHomeActionLabel(tileIndex);
+                break;
+            case HomeTileType.WebLink:
+                title = "WEBLINK";
+                value = "OPEN";
+                detail = ShortenHomeLink(homeTileLinks[tileIndex]);
+                break;
             default:
                 title = "EMPTY";
                 value = "-";
@@ -806,10 +1332,108 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                 break;
         }
 
+        string customLabel = homeTileLabels[tileIndex];
+        if (!string.IsNullOrWhiteSpace(customLabel))
+            title = customLabel;
         graphics.DrawString(title, titleFont, white, bounds.X + 18, bounds.Y + 16);
         using Font valueFont = new("Segoe UI", 30, FontStyle.Bold);
         graphics.DrawString(value, valueFont, white, bounds.X + 18, bounds.Y + 62);
         graphics.DrawString(detail, detailFont, muted, bounds.X + 18, bounds.Bottom - 32);
+    }
+
+    private static void DrawHomeTileBackground(Graphics graphics, Rectangle bounds, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
+        try
+        {
+            using Bitmap background = new(path);
+            Rectangle target = new(bounds.X + 2, bounds.Y + 2, bounds.Width - 4, bounds.Height - 4);
+            graphics.DrawImage(background, target);
+        }
+        catch (ArgumentException)
+        {
+        }
+        catch (ExternalException)
+        {
+        }
+    }
+
+    private static string ShortenHomeLink(string link)
+    {
+        if (string.IsNullOrWhiteSpace(link))
+            return "URL nicht konfiguriert";
+
+        return link.Length > 32 ? link.Substring(0, 29) + "..." : link;
+    }
+
+    private static void OpenWebLink(string link)
+    {
+        string normalizedLink = link.Trim();
+        if (!normalizedLink.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !normalizedLink.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            normalizedLink = "http://" + normalizedLink;
+
+        if (!Uri.TryCreate(normalizedLink, UriKind.Absolute, out Uri uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return;
+
+        OpenExternalLink(normalizedLink);
+    }
+
+    private static void OpenExternalLink(string link)
+    {
+        if (!Uri.TryCreate(link.Trim(), UriKind.Absolute, out Uri uri))
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = uri.AbsoluteUri,
+                UseShellExecute = true
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            OpenWebLinkWithExplorer(uri.AbsoluteUri);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            OpenWebLinkWithExplorer(uri.AbsoluteUri);
+        }
+    }
+
+    private static void OpenWebLinkWithExplorer(string link)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = link,
+                UseShellExecute = false
+            });
+        }
+        catch (InvalidOperationException)
+        {
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+    }
+
+    private string GetHomeActionLabel(int tileIndex)
+    {
+        if (tileIndex < 0 || tileIndex >= homeTileActions.Length || homeTiles[tileIndex] != HomeTileType.CustomAction)
+            return "Home slot";
+
+        if (homeTileActions[tileIndex].HasValue &&
+            AvailableExternalActions.TryGetValue(homeTileActions[tileIndex].Value, out string label))
+            return label;
+
+        return "Externe Aktion";
     }
 
     private void DrawHardwareTile(Graphics graphics, Rectangle bounds, SensorSnapshot data, Font titleFont, Font detailFont)
@@ -865,21 +1489,24 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
     private void DrawHeader(Graphics graphics, Font titleFont, Font detailFont, SensorSnapshot data, Color accent, bool showHomeButton, List<HitTarget> targets)
     {
+        float referenceWidth = LayoutReferenceWidth;
         using Brush white = new SolidBrush(Color.White);
         using Font timeFont = new("Segoe UI", timeFontSize, FontStyle.Bold);
         using Brush timeBrush = new SolidBrush(timeColor);
         using Pen border = new(accent, 2);
-        graphics.DrawRectangle(border, 8, 8, (int)ReferenceWidth - 16, 54);
+        graphics.DrawRectangle(border, 8, 8, (int)referenceWidth - 16, 54);
         graphics.DrawString("HWiNFO SENSOR PANEL", titleFont, white, 18, 25);
+        using Brush headerMuted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString("v1.0.0", detailFont, headerMuted, 210, 29);
         TimeZoneInfo timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
         string currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone).ToString("HH:mm:ss");
         SizeF timeSize = graphics.MeasureString(currentTime, timeFont);
-        graphics.DrawString(currentTime, timeFont, timeBrush, (ReferenceWidth - timeSize.Width) / 2, 25);
+        graphics.DrawString(currentTime, timeFont, timeBrush, (referenceWidth - timeSize.Width) / 2, 25);
         const float rightPadding = 18;
         const float logoSize = 24;
         const float logoTextGap = 6;
         SizeF authorSize = graphics.MeasureString("by ReXx09", detailFont);
-        float authorX = ReferenceWidth - rightPadding - authorSize.Width;
+        float authorX = referenceWidth - rightPadding - authorSize.Width;
         float logoX = authorX - logoTextGap - logoSize;
         if (logoBitmap != null)
         {
@@ -890,7 +1517,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         using Brush authorBrush = new SolidBrush(accent);
         graphics.DrawString("by ReXx09", detailFont, authorBrush, authorX, 28);
 
-        if (showHomeButton)
+        if (showHomeButton || currentPage == PanelPage.Home)
         {
             Rectangle homeButton = new((int)logoX - 18 - 96, 18, 96, 34);
             using Brush homeBackground = new SolidBrush(Color.FromArgb(22, 25, 31));
@@ -900,9 +1527,12 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             graphics.DrawRectangle(border, homeButton);
             graphics.DrawString("HOME", homeFont, white, homeButton, centered);
 
-            Rectangle homeTouchArea = homeButton;
-            homeTouchArea.Inflate(8, 8);
-            targets.Add(new HitTarget(homeTouchArea, () => NavigateTo(PanelPage.Home)));
+            if (showHomeButton)
+            {
+                Rectangle homeTouchArea = homeButton;
+                homeTouchArea.Inflate(8, 8);
+                targets.Add(new HitTarget(homeTouchArea, () => NavigateTo(PanelPage.Home)));
+            }
         }
     }
 
@@ -926,15 +1556,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         using Brush accentBrush = new SolidBrush(accent);
         model = ShortenFiveByOneModel(label, model);
+        bool isFourByThree = WidgetSize.Width == 4 && WidgetSize.Height == 3;
         SizeF labelSize = graphics.MeasureString(label, titleFont);
         SizeF modelSize = graphics.MeasureString(model, detailFont);
         float headerStart = bounds.X + (bounds.Width - labelSize.Width - 8 - modelSize.Width) / 2f;
-        graphics.DrawString(label, titleFont, white, headerStart, bounds.Y + 14);
-        graphics.DrawString(model, detailFont, muted, headerStart + labelSize.Width + 8, bounds.Y + 18);
+        graphics.DrawString(label, titleFont, white, headerStart, bounds.Y + (isFourByThree ? 9 : 14));
+        graphics.DrawString(model, detailFont, muted, headerStart + labelSize.Width + 8, bounds.Y + (isFourByThree ? 13 : 18));
         bool isFiveByFour = WidgetSize.Width == 5 && WidgetSize.Height == 4;
         bool isThreeByThree = WidgetSize.Width == 3 && WidgetSize.Height == 3;
         int gaugeRadius = isFiveByFour ? 60 : isThreeByThree ? (panelTarget == PanelTarget.Combined ? 45 : 60) : 58;
-        int gaugeWidth = isFiveByFour ? 22 : isThreeByThree ? 20 : 10;
+        int gaugeWidth = isFiveByFour ? 22 : isThreeByThree || isFourByThree ? 20 : 10;
         int metricBarAdjustment = isThreeByThree ? -10 : 0;
         int metricsX = 15;
         if (isFiveByFour && fiveByFourGaugeMode == FiveByFourGaugeMode.Combined)
@@ -956,13 +1587,13 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         if (isThreeByThree)
         {
             bool singleTarget = panelTarget != PanelTarget.Combined;
-            Point compactCenter = new(bounds.X + (singleTarget ? 70 : 68), bounds.Y + 115);
+            Point compactCenter = new(bounds.X + (singleTarget ? 80 : 68), bounds.Y + 115);
             DrawGauge(graphics, compactCenter, gaugeRadius, load, GetGaugeColor(load), gaugeWidth);
             DrawCenteredText(graphics, $"{load:0}%", valueFont, white, compactCenter.X, bounds.Y + 92);
             DrawCenteredText(graphics, "Load", detailFont, muted, compactCenter.X, bounds.Y + 161);
             if (singleTarget)
             {
-                Point temperatureCenter = new(bounds.Right - 70, bounds.Y + 115);
+                Point temperatureCenter = new(bounds.Right - 80, bounds.Y + 115);
                 DrawGauge(graphics, temperatureCenter, gaugeRadius, temperature, GetTemperatureGaugeColor(temperature), gaugeWidth);
                 DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, bounds.Y + 92);
                 DrawCenteredText(graphics, "Temp", detailFont, muted, temperatureCenter.X, bounds.Y + 161);
@@ -977,10 +1608,10 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
             }
             else
             {
-                DrawMetric(graphics, compactMetricX, bounds.Y + 65, "Temp", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
-                DrawMetric(graphics, compactMetricX, bounds.Y + 100, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
-                DrawMetric(graphics, compactMetricX, bounds.Y + 135, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
-                DrawMetric(graphics, compactMetricX, bounds.Y + 170, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 45, "Temp", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 80, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 115, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, compactMetricWidth, 10, -20);
+                DrawMetric(graphics, compactMetricX, bounds.Y + 150, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, compactMetricWidth, 10, -20);
             }
             return;
         }
@@ -994,13 +1625,16 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawGauge(graphics, gaugeCenter, gaugeRadius, gaugeValue, gaugeColor, gaugeWidth);
         DrawCenteredText(graphics, gaugeText, valueFont, white, gaugeCenter.X, bounds.Y + 92);
         DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 161);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 65, "Temperature", $"{temperature:0} °C", temperature / 100, accentBrush, detailFont, white, 240 + metricBarAdjustment);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 90, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, 248 + metricBarAdjustment, 10);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 125, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, 248 + metricBarAdjustment, 10);
-        DrawMetric(graphics, bounds.X + 200 + metricsX, bounds.Y + 160, "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, 248 + metricBarAdjustment, 10);
+        int generalMetricX = bounds.X + (isFourByThree ? 180 : 200 + metricsX);
+        int generalMetricWidth = isFourByThree ? bounds.Width - 195 : 248 + metricBarAdjustment;
+        int temperatureMetricWidth = isFourByThree ? bounds.Width - 195 : 240 + metricBarAdjustment;
+        DrawMetric(graphics, generalMetricX, bounds.Y + (isFourByThree ? 50 : 65), showTemperatureGauge ? "Load" : "Temperature", showTemperatureGauge ? $"{load:0}%" : $"{temperature:0} °C", showTemperatureGauge ? load / 100 : temperature / 100, accentBrush, detailFont, white, temperatureMetricWidth, isFourByThree || isFiveByFour ? 10 : 4, 0, 22);
+        DrawMetric(graphics, generalMetricX, bounds.Y + (isFiveByFour ? 100 : isFourByThree ? 85 : 90), "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, generalMetricWidth, 10, 0, 22);
+        DrawMetric(graphics, generalMetricX, bounds.Y + (isFiveByFour ? 135 : isFourByThree ? 120 : 125), "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, generalMetricWidth, 10, 0, 22);
+        DrawMetric(graphics, generalMetricX, bounds.Y + (isFiveByFour ? 170 : isFourByThree ? 155 : 160), "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, generalMetricWidth, 10, 0, 22);
     }
 
-    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment, bool compactThreeByThree)
+    private static void DrawMemoryCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment, bool compactThreeByThree, bool hideLastInfo)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
@@ -1019,14 +1653,15 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
         bool gaugeOnLeft = alignment == MemoryGaugeAlignment.Left;
         int contentX = gaugeOnLeft ? bounds.X + 118 : bounds.X + 14;
-        graphics.DrawString("RAM", titleFont, white, contentX, bounds.Y + 12);
-        graphics.DrawString($"Clock  {data.MemoryClockMhz:0} MHz", detailFont, muted, contentX, bounds.Y + 50);
-        graphics.DrawString($"Used  {data.MemoryUsedGigabytes:0.0} GB / {data.MemoryTotalGigabytes:0} GB", detailFont, muted, contentX, bounds.Y + 76);
-        graphics.DrawString("38-38-38-77 CR2", detailFont, muted, contentX, bounds.Y + 102);
+        graphics.DrawString("RAM", titleFont, white, contentX, bounds.Y + (hideLastInfo ? 7 : 12));
+        graphics.DrawString($"Clock  {data.MemoryClockMhz:0} MHz", detailFont, muted, contentX, bounds.Y + (hideLastInfo ? 75 : 50));
+        graphics.DrawString($"Used  {data.MemoryUsedGigabytes:0.0} GB / {data.MemoryTotalGigabytes:0} GB", detailFont, muted, contentX, bounds.Y + (hideLastInfo ? 101 : 76));
+        if (!hideLastInfo)
+            graphics.DrawString("38-38-38-77 CR2", detailFont, muted, contentX, bounds.Y + 102);
         Point gaugeCenter = new(gaugeOnLeft ? bounds.X + 62 : bounds.Right - 62, bounds.Y + 68);
         DrawGauge(graphics, gaugeCenter, 42, data.MemoryLoadPercent, accent, 16);
         DrawCenteredText(graphics, $"{data.MemoryLoadPercent:0}%", valueFont, white, gaugeCenter.X, gaugeCenter.Y - valueFont.Height / 2f);
-        DrawCenteredText(graphics, "Load", detailFont, muted, gaugeCenter.X, gaugeCenter.Y + 42);
+        DrawCenteredText(graphics, "Load", detailFont, muted, gaugeCenter.X, gaugeCenter.Y + (hideLastInfo ? 22 : 42));
     }
 
     private static void DrawFpsCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
@@ -1040,14 +1675,54 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString("Frame rate", detailFont, muted, bounds.X + 18, bounds.Y + 100);
     }
 
-    private static void DrawLogoCard(Graphics graphics, Rectangle bounds, Color accent, Font titleFont, Font detailFont)
+    private void DrawDiskCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
-        using Brush red = new SolidBrush(accent);
-        graphics.DrawString("WIGIDASH", titleFont, white, bounds.X + 20, bounds.Y + 24);
-        graphics.DrawString("HWiNFO", detailFont, red, bounds.X + 20, bounds.Y + 62);
-        graphics.DrawString("CUSTOM PANEL", detailFont, white, bounds.X + 20, bounds.Y + 90);
+        using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
+        graphics.DrawString("STORAGE", titleFont, white, bounds.X + 16, bounds.Y + 10);
+
+        int rowHeight = 29;
+        int rowTop = bounds.Y + 38;
+        int maxDrives = Math.Max(1, Math.Min(8, (bounds.Height - 42) / rowHeight));
+        int shownDrives = 0;
+        foreach (DriveInfo drive in DriveInfo.GetDrives())
+        {
+            if (shownDrives >= maxDrives || drive.DriveType != DriveType.Fixed || !drive.IsReady)
+                continue;
+
+            try
+            {
+                double usedBytes = drive.TotalSize - drive.AvailableFreeSpace;
+                double usedPercent = drive.TotalSize > 0 ? usedBytes / drive.TotalSize * 100 : 0;
+                string driveLabel = drive.Name.TrimEnd('\\');
+                int temperatureIndex = char.ToUpperInvariant(driveLabel[0]) - 'C';
+                string temperature = data.DriveTemperatures != null && temperatureIndex >= 0 && temperatureIndex < data.DriveTemperatures.Length && data.DriveTemperatures[temperatureIndex].HasValue
+                    ? $"{data.DriveTemperatures[temperatureIndex].Value:0} °C"
+                    : "-- °C";
+                string detail = $"{usedPercent:0}%   {drive.AvailableFreeSpace / 1073741824d:0.0} GB frei   {temperature}";
+                int rowY = rowTop + shownDrives * rowHeight;
+                graphics.DrawString(driveLabel, detailFont, white, bounds.X + 16, rowY);
+                using Font smallFont = new("Segoe UI", 8);
+                graphics.DrawString(detail, smallFont, muted, bounds.X + 52, rowY + 1);
+
+                Rectangle bar = new(bounds.X + 52, rowY + 17, bounds.Width - 68, 8);
+                using Brush barBackground = new SolidBrush(Color.FromArgb(65, 72, 84));
+                using Brush barFill = new SolidBrush(accent);
+                graphics.FillRectangle(barBackground, bar);
+                graphics.FillRectangle(barFill, new Rectangle(bar.X, bar.Y, (int)(bar.Width * Math.Min(100, Math.Max(0, usedPercent)) / 100), bar.Height));
+                shownDrives++;
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        if (shownDrives == 0)
+            graphics.DrawString("Keine Laufwerke", detailFont, muted, bounds.X + 16, rowTop);
     }
 
     private static void DrawInfoCard(Graphics graphics, Rectangle bounds, string label, string value, Color accent, Font titleFont, Font detailFont)
@@ -1060,7 +1735,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.FillRectangle(new SolidBrush(accent), bounds.X + 14, bounds.Y + 86, bounds.Width - 28, 4);
     }
 
-    private static void DrawVramCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment, bool compactThreeByThree)
+    private static void DrawVramCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font valueFont, Font detailFont, MemoryGaugeAlignment alignment, bool compactThreeByThree, bool hideLastInfo)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
@@ -1083,14 +1758,15 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
         bool gaugeOnLeft = alignment == MemoryGaugeAlignment.Left;
         int contentX = gaugeOnLeft ? bounds.X + 118 : bounds.X + 14;
-        graphics.DrawString("VRAM", titleFont, white, contentX, bounds.Y + 12);
-        graphics.DrawString($"Clock  {data.GpuClockMhz:0} MHz", detailFont, muted, contentX, bounds.Y + 50);
-        graphics.DrawString($"Used  {usedGigabytes:0.0} GB / {totalGigabytes:0} GB", detailFont, muted, contentX, bounds.Y + 76);
-        graphics.DrawString("GPU Memory", detailFont, muted, contentX, bounds.Y + 102);
+        graphics.DrawString("VRAM", titleFont, white, contentX, bounds.Y + (hideLastInfo ? 7 : 12));
+        graphics.DrawString($"Clock  {data.GpuClockMhz:0} MHz", detailFont, muted, contentX, bounds.Y + (hideLastInfo ? 75 : 50));
+        graphics.DrawString($"Used  {usedGigabytes:0.0} GB / {totalGigabytes:0} GB", detailFont, muted, contentX, bounds.Y + (hideLastInfo ? 101 : 76));
+        if (!hideLastInfo)
+            graphics.DrawString("GPU Memory", detailFont, muted, contentX, bounds.Y + 102);
         Point gaugeCenter = new(gaugeOnLeft ? bounds.X + 62 : bounds.Right - 62, bounds.Y + 68);
         DrawGauge(graphics, gaugeCenter, 42, load, accent, 16);
         DrawCenteredText(graphics, $"{load:0}%", valueFont, white, gaugeCenter.X, gaugeCenter.Y - valueFont.Height / 2f);
-        DrawCenteredText(graphics, "Load", detailFont, muted, gaugeCenter.X, gaugeCenter.Y + 42);
+        DrawCenteredText(graphics, "Load", detailFont, muted, gaugeCenter.X, gaugeCenter.Y + (hideLastInfo ? 22 : 42));
     }
 
     private static void DrawFanCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont)
@@ -1124,13 +1800,13 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawCenteredText(graphics, $"{data.CpuFanRpm:0} RPM", detailFont, white, barX + barWidth / 2f, cpuBarY + (barHeight - detailFont.Height) / 2f);
     }
 
-    private static void DrawNetworkCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont, double uploadNetworkScaleMegabytesPerSecond, double downloadNetworkScaleMegabytesPerSecond)
+    private static void DrawNetworkCard(Graphics graphics, Rectangle bounds, SensorSnapshot data, Color accent, Font titleFont, Font detailFont, double uploadNetworkScaleMegabytesPerSecond, double downloadNetworkScaleMegabytesPerSecond, bool isFourByThree)
     {
         DrawCardFrame(graphics, bounds, accent);
         using Brush white = new SolidBrush(Color.White);
         using Brush barBackground = new SolidBrush(Color.FromArgb(65, 73, 83));
         using Brush barFill = new SolidBrush(accent);
-        DrawCenteredText(graphics, "NETWORK", titleFont, white, bounds.X + bounds.Width / 2f, bounds.Y + 12);
+        DrawCenteredText(graphics, "NETWORK", titleFont, white, bounds.X + bounds.Width / 2f, bounds.Y + (isFourByThree ? 7 : 12));
 
         const int barHeight = 30;
         int labelX = bounds.X + 14;
@@ -1155,18 +1831,24 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawCenteredText(graphics, $"{data.NetworkDownloadMegabytesPerSecond:0.0} MB/s", detailFont, white, barX + barWidth / 2f, downloadBarY + (barHeight - detailFont.Height) / 2f);
     }
 
-    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white, int width = 220, int barHeight = 4, int valueOffset = 0)
+    private static void DrawMetric(Graphics graphics, int x, int y, string label, string value, double progress, Brush accent, Font detailFont, Brush white, int width = 220, int barHeight = 4, int valueOffset = 0, int barOffset = 22)
     {
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         graphics.DrawString(label, detailFont, muted, x, y);
         graphics.DrawString(value, detailFont, white, x + 108 + valueOffset, y);
         double clampedProgress = progress < 0 ? 0 : progress > 1 ? 1 : progress;
-        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + 22, width, barHeight);
-        graphics.FillRectangle(accent, x, y + 22, (float)(width * clampedProgress), barHeight);
+        graphics.FillRectangle(new SolidBrush(Color.FromArgb(65, 73, 83)), x, y + barOffset, width, barHeight);
+        graphics.FillRectangle(accent, x, y + barOffset, (float)(width * clampedProgress), barHeight);
     }
 
     private void DrawCompactPanel(Graphics graphics, int width, int height, SensorSnapshot data, Font titleFont, Font valueFont, Font detailFont)
     {
+        if (WidgetSize.Width == 2 && WidgetSize.Height == 2 && panelTarget == PanelTarget.Storage)
+        {
+            DrawDiskCard(graphics, new Rectangle(2, 2, width - 5, height - 5), data, accentColor, titleFont, detailFont);
+            return;
+        }
+
         bool gpu = panelTarget == PanelTarget.Gpu;
         string label = gpu ? "GPU" : "CPU";
         double load = gpu ? data.GpuLoadPercent : data.CpuLoadPercent;
@@ -1306,20 +1988,21 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         int radius = Math.Max(40, Math.Min(bounds.Height / 4, bounds.Width / 6));
         using Font labelFont = new("Segoe UI", Math.Max(9, bounds.Height / 13), FontStyle.Bold);
-        using Font valueFont = new("Segoe UI", Math.Max(14, radius * 0.58f), FontStyle.Bold);
+        using Font valueFont = new("Segoe UI", Math.Max(14, radius * 0.48f), FontStyle.Bold);
         using Font detailFont = new("Segoe UI", Math.Max(8, bounds.Height / 16));
-        graphics.DrawString(label, labelFont, white, bounds.X + 10, bounds.Y + 8);
+        DrawCenteredText(graphics, label, labelFont, white, bounds.X + bounds.Width / 2f, bounds.Y + 8);
         bool singleTarget = panelTarget != PanelTarget.Combined;
-        Point loadCenter = new(singleTarget ? bounds.X + radius + 54 : bounds.Right - radius - 54, bounds.Y + radius + 48);
+        int gaugeCenterOffsetY = singleTarget ? 33 : 48;
+        Point loadCenter = new(singleTarget ? bounds.X + radius + 54 : bounds.Right - radius - 54, bounds.Y + radius + gaugeCenterOffsetY);
         DrawGauge(graphics, loadCenter, radius, load, GetGaugeColor(load), 18);
         DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
-        DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, loadCenter.Y + radius - 13);
+        DrawCenteredText(graphics, "Load", detailFont, muted, loadCenter.X, loadCenter.Y + radius - 18);
         if (singleTarget)
         {
-            Point temperatureCenter = new(bounds.Right - radius - 54, bounds.Y + radius + 48);
+            Point temperatureCenter = new(bounds.Right - radius - 54, bounds.Y + radius + gaugeCenterOffsetY);
             DrawGauge(graphics, temperatureCenter, radius, temperature, GetTemperatureGaugeColor(temperature), 18);
             DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
-            DrawCenteredText(graphics, "Temp", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + radius - 13);
+            DrawCenteredText(graphics, "Temp", detailFont, muted, temperatureCenter.X, temperatureCenter.Y + radius - 18);
         }
         int metricX = bounds.X + 10;
         int metricWidth = bounds.Width - 20;

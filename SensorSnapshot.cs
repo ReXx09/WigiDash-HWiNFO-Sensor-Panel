@@ -24,4 +24,5 @@ public sealed class SensorSnapshot
     public double Fps { get; set; }
     public int CpuFanRpm { get; set; }
     public int GpuFanRpm { get; set; }
+    public double?[] DriveTemperatures { get; set; } = new double?[8];
 }

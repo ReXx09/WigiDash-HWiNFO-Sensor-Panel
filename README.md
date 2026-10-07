@@ -11,6 +11,7 @@ Grafisches WigiDash-Widget für CPU-, GPU-, RAM-, VRAM-, Lüfter- und Netzwerkda
 - Uhrzeit, Zeitzone, Uhrfarbe und Uhrgröße
 - Touchaktionen für Header und externe WigiDash-Aktionen
 - mehrere Seiten (Hardware und Home) mit Touch-Navigation ab Raster `3x2`
+- lokale Discord-Statusansicht im großen HOME-Bereich
 - Logo und Autorenhinweis `by ReXx09`
 
 ## Unterstützte Rastergrößen
@@ -33,6 +34,24 @@ Ab Raster `3x2` besteht das Widget aus mehreren Seiten, die per Touch gewechselt
 - **Home**: Startseite mit vier konfigurierbaren Kacheln ab Raster `3x2`. Jede Kachel kann CPU, GPU, RAM, VRAM, Netzwerk, Lüfter, FPS oder Leer anzeigen.
 
 Auf der Hardware-Seite führt der `HOME`-Button im Header zurück zur Startseite. Welche Seite nach dem Laden erscheint, wird im Einstellungsmenü unter **Seiten → Startseite** gewählt. Der Seitenwechsel reagiert nur auf einfaches Tippen. Kleinere Raster zeigen weiterhin nur das Sensorpanel.
+
+### Lokale Discord-Ansicht
+
+Im Einstellungsmenü kann ein HOME-Button auf **Discord** gesetzt werden. Das große linke 4x4-Fenster zeigt dann den Status einer lokalen Bridge und bietet Touchflächen zum Öffnen von Discord und zum manuellen Aktualisieren.
+
+Standardmäßig fragt das Widget `http://127.0.0.1:47900/status` ab. Die Bridge muss ein JSON-Objekt in diesem Format liefern:
+
+```json
+{
+	"Username": "ReXx09",
+	"Status": "online",
+	"Activity": "Minecraft",
+	"VoiceChannel": "Gaming",
+	"Guild": "Meine Community"
+}
+```
+
+Die Bridge kann Discord Gateway, OAuth oder Rich Presence verwenden. Zugangsdaten bleiben außerhalb des WigiDash-Widgets. Die Status-URL und die Discord-Öffnen-URL lassen sich unter **Seiten → Lokale Discord-Bridge** ändern.
 
 Eine weitere Seite ergänzen:
 

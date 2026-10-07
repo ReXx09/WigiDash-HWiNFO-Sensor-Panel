@@ -99,7 +99,18 @@ public sealed class ManagerSensorSource : ISensorSource
                 MemoryTotalGigabytes = 32,
                 MemoryClockMhz = ReadValue(SensorSlot.MemoryClock),
                 NetworkUploadMegabytesPerSecond = ReadValue(SensorSlot.NetworkUpload),
-                NetworkDownloadMegabytesPerSecond = ReadValue(SensorSlot.NetworkDownload)
+                NetworkDownloadMegabytesPerSecond = ReadValue(SensorSlot.NetworkDownload),
+                DriveTemperatures = new double?[]
+                {
+                    ReadOptionalValue(SensorSlot.DriveCTemperature),
+                    ReadOptionalValue(SensorSlot.DriveDTemperature),
+                    ReadOptionalValue(SensorSlot.DriveETemperature),
+                    ReadOptionalValue(SensorSlot.DriveFTemperature),
+                    ReadOptionalValue(SensorSlot.DriveGTemperature),
+                    ReadOptionalValue(SensorSlot.DriveHTemperature),
+                    ReadOptionalValue(SensorSlot.DriveITemperature),
+                    ReadOptionalValue(SensorSlot.DriveJTemperature)
+                }
             };
         }
     }
@@ -120,10 +131,18 @@ public sealed class ManagerSensorSource : ISensorSource
         return bindings.TryGetValue(slot, out Guid sensorGuid) && values.TryGetValue(sensorGuid, out double value) ? value : 0;
     }
 
+    private double? ReadOptionalValue(SensorSlot slot)
+    {
+        return bindings.TryGetValue(slot, out Guid sensorGuid) && values.TryGetValue(sensorGuid, out double value) ? value : null;
+    }
+
     private void BindDefaults()
     {
         foreach (SensorSlot slot in Enum.GetValues(typeof(SensorSlot)))
         {
+            if (slot >= SensorSlot.DriveCTemperature && slot <= SensorSlot.DriveJTemperature)
+                continue;
+
             SensorItem sensor = FindBestSensor(slot);
             if (sensor != null)
                 Bind(slot, sensor.Guid);
@@ -221,6 +240,17 @@ public sealed class ManagerSensorSource : ISensorSource
             case SensorSlot.NetworkDownload:
                 if (has("Download") || has("Received") || has("Receive") || has("Rx")) score += 40;
                 if (has("Network") || has("Ethernet") || has("Wi-Fi") || has("WiFi")) score += 20;
+                break;
+            case SensorSlot.DriveCTemperature:
+            case SensorSlot.DriveDTemperature:
+            case SensorSlot.DriveETemperature:
+            case SensorSlot.DriveFTemperature:
+            case SensorSlot.DriveGTemperature:
+            case SensorSlot.DriveHTemperature:
+            case SensorSlot.DriveITemperature:
+            case SensorSlot.DriveJTemperature:
+                if (unit.IndexOf("C", StringComparison.OrdinalIgnoreCase) >= 0) score += 30;
+                if (has("Temperature") || has("Drive") || has("Disk") || has("Storage") || has("NVMe") || has("SSD") || has("HDD")) score += 20;
                 break;
         }
 
