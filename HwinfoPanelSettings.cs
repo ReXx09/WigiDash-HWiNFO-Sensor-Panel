@@ -108,6 +108,11 @@ public sealed class HwinfoPanelSettings : UserControl
         colorSelector.Items.Add("Rot");
         colorSelector.Items.Add("Blau");
         colorSelector.Items.Add("Grün");
+        colorSelector.Items.Add("Gelb");
+        colorSelector.Items.Add("Violett");
+        colorSelector.Items.Add("Pink");
+        colorSelector.Items.Add("Weiß");
+        colorSelector.Items.Add("Braun");
         colorSelector.SelectedIndex = ColorIndex(widget.AccentColor);
         colorSelector.SelectionChanged += ColorSelector_SelectionChanged;
         accentColumn.Children.Add(colorSelector);
@@ -940,6 +945,11 @@ public sealed class HwinfoPanelSettings : UserControl
         {
             1 => DrawingColor.FromArgb(45, 145, 230),
             2 => DrawingColor.FromArgb(55, 190, 105),
+            3 => DrawingColor.FromArgb(235, 195, 45),
+            4 => DrawingColor.FromArgb(145, 75, 205),
+            5 => DrawingColor.FromArgb(235, 75, 155),
+            6 => DrawingColor.FromArgb(245, 245, 245),
+            7 => DrawingColor.FromArgb(150, 90, 45),
             _ => DrawingColor.FromArgb(230, 35, 38)
         };
         widget.SetAccentColor(color);
@@ -1334,10 +1344,20 @@ public sealed class HwinfoPanelSettings : UserControl
 
     private static int ColorIndex(DrawingColor color)
     {
-        if (color.B > color.R && color.B > color.G)
+        if (color.R == 45 && color.G == 145 && color.B == 230)
             return 1;
-        if (color.G > color.R && color.G > color.B)
+        if (color.R == 55 && color.G == 190 && color.B == 105)
             return 2;
+        if (color.R == 235 && color.G == 195 && color.B == 45)
+            return 3;
+        if (color.R == 145 && color.G == 75 && color.B == 205)
+            return 4;
+        if (color.R == 235 && color.G == 75 && color.B == 155)
+            return 5;
+        if (color.R == 245 && color.G == 245 && color.B == 245)
+            return 6;
+        if (color.R == 150 && color.G == 90 && color.B == 45)
+            return 7;
         return 0;
     }
 
