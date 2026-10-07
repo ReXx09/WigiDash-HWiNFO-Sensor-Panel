@@ -1682,9 +1682,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         using Brush muted = new SolidBrush(Color.FromArgb(160, 170, 182));
         graphics.DrawString("STORAGE", titleFont, white, bounds.X + 16, bounds.Y + 10);
 
-        int rowHeight = 29;
-        int rowTop = bounds.Y + 38;
-        int maxDrives = Math.Max(1, Math.Min(8, (bounds.Height - 42) / rowHeight));
+        int rowHeight = 31;
+        int rowTop = bounds.Y + 34;
+        int maxDrives = Math.Max(1, Math.Min(8, (bounds.Height - 34) / rowHeight));
         int shownDrives = 0;
         foreach (DriveInfo drive in DriveInfo.GetDrives())
         {
@@ -1700,17 +1700,33 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
                 string temperature = data.DriveTemperatures != null && temperatureIndex >= 0 && temperatureIndex < data.DriveTemperatures.Length && data.DriveTemperatures[temperatureIndex].HasValue
                     ? $"{data.DriveTemperatures[temperatureIndex].Value:0} °C"
                     : "-- °C";
-                string detail = $"{usedPercent:0}%   {drive.AvailableFreeSpace / 1073741824d:0.0} GB frei   {temperature}";
+                string detail = $"{drive.AvailableFreeSpace / 1073741824d:0.0} GB frei";
+                string usageLabel = $"{usedPercent:0}%";
+                string temperatureLabel = temperature.Replace(" ", string.Empty);
                 int rowY = rowTop + shownDrives * rowHeight;
-                graphics.DrawString(driveLabel, detailFont, white, bounds.X + 16, rowY);
+                graphics.DrawString(driveLabel, detailFont, white, bounds.X + 16, rowY + 10);
                 using Font smallFont = new("Segoe UI", 8);
-                graphics.DrawString(detail, smallFont, muted, bounds.X + 52, rowY + 1);
 
-                Rectangle bar = new(bounds.X + 52, rowY + 17, bounds.Width - 68, 8);
+                int barY = rowY + 11;
+                int availableBarWidth = bounds.Width - 68;
+                int usageBarWidth = Math.Max(90, (int)(availableBarWidth * 0.64f));
+                int temperatureBarX = bounds.X + 52 + usageBarWidth + 6;
+                int temperatureBarWidth = Math.Max(55, bounds.Right - 16 - temperatureBarX);
+                Rectangle usageBar = new(bounds.X + 52, barY, usageBarWidth, 20);
+                Rectangle temperatureBar = new(temperatureBarX, barY, temperatureBarWidth, 20);
                 using Brush barBackground = new SolidBrush(Color.FromArgb(65, 72, 84));
                 using Brush barFill = new SolidBrush(accent);
-                graphics.FillRectangle(barBackground, bar);
-                graphics.FillRectangle(barFill, new Rectangle(bar.X, bar.Y, (int)(bar.Width * Math.Min(100, Math.Max(0, usedPercent)) / 100), bar.Height));
+                graphics.FillRectangle(barBackground, usageBar);
+                graphics.FillRectangle(barFill, new Rectangle(usageBar.X, usageBar.Y, (int)(usageBar.Width * Math.Min(100, Math.Max(0, usedPercent)) / 100), usageBar.Height));
+                using Brush temperatureBrush = new SolidBrush(data.DriveTemperatures != null && temperatureIndex >= 0 && temperatureIndex < data.DriveTemperatures.Length && data.DriveTemperatures[temperatureIndex].HasValue
+                    ? GetTemperatureColor(data.DriveTemperatures[temperatureIndex].Value)
+                    : Color.FromArgb(65, 72, 84));
+                graphics.FillRectangle(temperatureBrush, temperatureBar);
+                using StringFormat barLabelFormat = new() { LineAlignment = StringAlignment.Center };
+                using StringFormat rightLabelFormat = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
+                graphics.DrawString(usageLabel, smallFont, white, new RectangleF(usageBar.X + 5, usageBar.Y, usageBar.Width - 10, usageBar.Height), barLabelFormat);
+                graphics.DrawString(detail, smallFont, white, new RectangleF(usageBar.X + 5, usageBar.Y, usageBar.Width - 10, usageBar.Height), rightLabelFormat);
+                graphics.DrawString(temperatureLabel, smallFont, white, new RectangleF(temperatureBar.X + 4, temperatureBar.Y, temperatureBar.Width - 8, temperatureBar.Height), barLabelFormat);
                 shownDrives++;
             }
             catch (IOException)
@@ -1723,6 +1739,17 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
 
         if (shownDrives == 0)
             graphics.DrawString("Keine Laufwerke", detailFont, muted, bounds.X + 16, rowTop);
+    }
+
+    private static Color GetTemperatureColor(double temperature)
+    {
+        if (temperature >= 70)
+            return Color.FromArgb(220, 55, 55);
+        if (temperature >= 55)
+            return Color.FromArgb(225, 145, 35);
+        if (temperature >= 45)
+            return Color.FromArgb(205, 185, 45);
+        return Color.FromArgb(55, 165, 90);
     }
 
     private static void DrawInfoCard(Graphics graphics, Rectangle bounds, string label, string value, Color accent, Font titleFont, Font detailFont)
