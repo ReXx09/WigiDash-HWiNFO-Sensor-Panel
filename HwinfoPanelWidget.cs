@@ -1627,8 +1627,7 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         DrawCenteredText(graphics, gaugeLabel, detailFont, muted, gaugeCenter.X, bounds.Y + 161);
         int generalMetricX = bounds.X + (isFourByThree ? 180 : 200 + metricsX);
         int generalMetricWidth = isFourByThree ? bounds.Width - 195 : 248 + metricBarAdjustment;
-        int temperatureMetricWidth = isFourByThree ? bounds.Width - 195 : 240 + metricBarAdjustment;
-        DrawMetric(graphics, generalMetricX, bounds.Y + (isFourByThree ? 50 : 65), showTemperatureGauge ? "Load" : "Temperature", showTemperatureGauge ? $"{load:0}%" : $"{temperature:0} °C", showTemperatureGauge ? load / 100 : temperature / 100, accentBrush, detailFont, white, temperatureMetricWidth, isFourByThree || isFiveByFour ? 10 : 4, 0, 22);
+        DrawMetric(graphics, generalMetricX, bounds.Y + (isFourByThree ? 50 : 65), showTemperatureGauge ? "Load" : "Temperature", showTemperatureGauge ? $"{load:0}%" : $"{temperature:0} °C", showTemperatureGauge ? load / 100 : temperature / 100, accentBrush, detailFont, white, generalMetricWidth, isFourByThree || isFiveByFour ? 10 : 4, 0, 22);
         DrawMetric(graphics, generalMetricX, bounds.Y + (isFiveByFour ? 100 : isFourByThree ? 85 : 90), "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white, generalMetricWidth, 10, 0, 22);
         DrawMetric(graphics, generalMetricX, bounds.Y + (isFiveByFour ? 135 : isFourByThree ? 120 : 125), "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white, generalMetricWidth, 10, 0, 22);
         DrawMetric(graphics, generalMetricX, bounds.Y + (isFiveByFour ? 170 : isFourByThree ? 155 : 160), "Fan", $"{fanRpm:0} RPM", fanRpm / (label == "CPU" ? 5000 : 3000), accentBrush, detailFont, white, generalMetricWidth, 10, 0, 22);
@@ -1868,6 +1867,17 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.FillRectangle(accent, x, y + barOffset, (float)(width * clampedProgress), barHeight);
     }
 
+    private static void DrawCompactMetricBar(Graphics graphics, int x, int y, int width, string label, string value, double progress, Brush accent, Font detailFont, Brush white)
+    {
+        const int barHeight = 16;
+        using Brush background = new SolidBrush(Color.FromArgb(65, 73, 83));
+        double clampedProgress = progress < 0 ? 0 : progress > 1 ? 1 : progress;
+        graphics.FillRectangle(background, x, y, width, barHeight);
+        graphics.FillRectangle(accent, x, y, (float)(width * clampedProgress), barHeight);
+        graphics.DrawString(label, detailFont, white, x + 6, y + 1);
+        graphics.DrawString(value, detailFont, white, x + 72, y + 1);
+    }
+
     private void DrawCompactPanel(Graphics graphics, int width, int height, SensorSnapshot data, Font titleFont, Font valueFont, Font detailFont)
     {
         if (WidgetSize.Width == 2 && WidgetSize.Height == 2 && panelTarget == PanelTarget.Storage)
@@ -1892,8 +1902,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         {
             bool isOneByOne = WidgetSize.Width == 1 && WidgetSize.Height == 1;
             bool isTwoByOne = WidgetSize.Width == 2 && WidgetSize.Height == 1;
-            int radius = isOneByOne || isTwoByOne ? 49 : Math.Max(24, Math.Min(width, height) / 4);
-            int gaugeWidth = isOneByOne || isTwoByOne ? 20 : 10;
+            bool isTwoByTwo = WidgetSize.Width == 2 && WidgetSize.Height == 2;
+            int radius = isOneByOne || isTwoByOne ? 49 : isTwoByTwo ? 60 : Math.Max(24, Math.Min(width, height) / 4);
+            int gaugeWidth = isOneByOne || isTwoByOne || isTwoByTwo ? 20 : 10;
             Point gaugeCenter = new(width / 2, centerY + 12);
             double gaugeValue = isOneByOne && oneByOneShowsTemperature ? temperature : load;
             Color gaugeColor = isOneByOne && oneByOneShowsTemperature ? GetTemperatureGaugeColor(temperature) : GetGaugeColor(load);
@@ -1908,8 +1919,9 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         }
 
         bool isTwoByOneLayout = WidgetSize.Width == 2 && WidgetSize.Height == 1;
-        int radiusDual = isTwoByOneLayout ? 49 : Math.Max(30, Math.Min(58, Math.Min(width / 5, height / 2 - 18)));
-        int gaugeWidthDual = isTwoByOneLayout ? 20 : 10;
+        bool isTwoByTwoLayout = WidgetSize.Width == 2 && WidgetSize.Height == 2;
+        int radiusDual = isTwoByOneLayout ? 49 : isTwoByTwoLayout ? 60 : Math.Max(30, Math.Min(58, Math.Min(width / 5, height / 2 - 18)));
+        int gaugeWidthDual = isTwoByOneLayout || isTwoByTwoLayout ? 20 : 10;
         Point loadCenter = new(width / 4, centerY + 8);
         Point temperatureCenter = new(width * 3 / 4, centerY + 8);
         DrawGauge(graphics, loadCenter, radiusDual, load, GetGaugeColor(load), gaugeWidthDual);
@@ -1923,8 +1935,17 @@ public sealed class HwinfoPanelWidget : IWidgetInstance
         graphics.DrawString(model, detailFont, muted, 14, 34);
         DrawCenteredText(graphics, $"{load:0}%", valueFont, white, loadCenter.X, loadCenter.Y - valueFont.Height / 2f);
         DrawCenteredText(graphics, $"{temperature:0} °C", valueFont, white, temperatureCenter.X, temperatureCenter.Y - valueFont.Height / 2f);
-        graphics.DrawString($"Clock {clock:0} MHz", detailFont, white, width / 2 - 64, height - 42);
-        graphics.DrawString($"Power {power:0} W", detailFont, white, width / 2 - 58, height - 22);
+        if (isTwoByTwoLayout)
+        {
+            using Brush accentBrush = new SolidBrush(accentColor);
+            DrawCompactMetricBar(graphics, 14, height - 49, width - 28, "Clock", $"{clock:0} MHz", clock / 6000, accentBrush, detailFont, white);
+            DrawCompactMetricBar(graphics, 14, height - 26, width - 28, "Power", $"{power:0} W", power / 300, accentBrush, detailFont, white);
+        }
+        else
+        {
+            graphics.DrawString($"Clock {clock:0} MHz", detailFont, white, width / 2 - 64, height - 42);
+            graphics.DrawString($"Power {power:0} W", detailFont, white, width / 2 - 58, height - 22);
+        }
     }
 
     private void DrawTwoByThreePanel(Graphics graphics, int width, int height, SensorSnapshot data)

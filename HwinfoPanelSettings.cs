@@ -1220,6 +1220,26 @@ public sealed class HwinfoPanelSettings : UserControl
         Grid networkGrid = CreateSensorGrid();
         AddSensorPair(networkGrid, 0, "Upload", SensorSlot.NetworkUpload, "Download", SensorSlot.NetworkDownload);
         panel.Children.Add(networkGrid);
+
+        if (widget.WidgetSize.Width >= 5 && widget.WidgetSize.Height >= 4)
+        {
+            Border storageTemperatureSeparator = new() { BorderBrush = System.Windows.Media.Brushes.Gray, BorderThickness = new Thickness(0, 1, 0, 0), Margin = new Thickness(0, 10, 0, 6) };
+            panel.Children.Add(storageTemperatureSeparator);
+            panel.Children.Add(new TextBlock { Text = "LAUFWERK-TEMPERATUREN", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
+            SensorSlot[] driveTemperatureSlots =
+            {
+                SensorSlot.DriveCTemperature,
+                SensorSlot.DriveDTemperature,
+                SensorSlot.DriveETemperature,
+                SensorSlot.DriveFTemperature,
+                SensorSlot.DriveGTemperature,
+                SensorSlot.DriveHTemperature,
+                SensorSlot.DriveITemperature,
+                SensorSlot.DriveJTemperature
+            };
+            for (int index = 0; index < driveTemperatureSlots.Length; index++)
+                AddSensorSelector(panel, $"{(char)('C' + index)}: Temperatur", driveTemperatureSlots[index]);
+        }
     }
 
     private static Grid CreateSensorGrid()
